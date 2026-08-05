@@ -6,6 +6,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MemeToken} from "./MemeToken.sol";
+import {ReferralNFT} from "./ReferralNFT.sol";
 
 /// @notice Constant-product bonding curve with virtual reserves.
 ///         Deploys its own token and holds 100% of the supply:
@@ -33,6 +34,11 @@ contract BondingCurve is ReentrancyGuard {
     uint256 public tokenReserve; // virtual token reserve
     bool    public graduated;
 
+    /// Referral NFT that earns a cut of this token's fees. Set once by the factory.
+    ReferralNFT public referralNFT;
+    uint256     public referralId;
+    uint16      public referralBps;
+
     /// Cumulative tokens bought per wallet — never decreases.
     mapping(address => uint256) public purchased;
 
@@ -46,6 +52,7 @@ contract BondingCurve is ReentrancyGuard {
     error WalletCapExceeded(uint256 attempted, uint256 cap);
     error TransferFailed();
     error NotFactory();
+    error AlreadySet();
 
     constructor(
         string memory name_,
@@ -72,6 +79,15 @@ contract BondingCurve is ReentrancyGuard {
     /// Real ETH held for the graduation pool. Derived, never stored.
     function ethCollected() public view returns (uint256) {
         return quoteReserve - VIRTUAL_QUOTE;
+    }
+
+    /// Called once by the factory immediately after deployment.
+    function setReferral(ReferralNFT nft, uint256 id, uint16 bps) external {
+        if (msg.sender != factory) revert NotFactory();
+        if (address(referralNFT) != address(0)) revert AlreadySet();
+        referralNFT = nft;
+        referralId  = id;
+        referralBps = bps;
     }
 
     function buy(uint256 minTokensOut) external payable nonReentrant {
@@ -122,7 +138,7 @@ contract BondingCurve is ReentrancyGuard {
         tokenReserve = newTokenRes;
 
         IERC20(address(token)).safeTransfer(beneficiary, tokensOut);
-        _sendEth(feeRecipient, fee);
+        _payFee(fee);
         if (refund > 0) _sendEth(beneficiary, refund);
 
         emit Bought(beneficiary, quoteIn, tokensOut, fee);
@@ -152,7 +168,7 @@ contract BondingCurve is ReentrancyGuard {
         tokenReserve = newTokenRes;
 
         _sendEth(msg.sender, net);
-        _sendEth(feeRecipient, fee);
+        _payFee(fee);
 
         emit Sold(msg.sender, tokenAmount, net, fee);
     }
@@ -161,5 +177,25 @@ contract BondingCurve is ReentrancyGuard {
         if (amount == 0) return;
         (bool ok, ) = to.call{value: amount}("");
         if (!ok) revert TransferFailed();
+    }
+
+    /// Splits the trading fee between the referral NFT and the protocol.
+    /// Never reverts on a bad NFT — trading must not be brickable.
+    function _payFee(uint256 fee) private {
+        if (fee == 0) return;
+
+        uint256 refCut;
+        if (address(referralNFT) != address(0) && referralBps != 0) {
+            refCut = (fee * referralBps) / BPS;
+            if (refCut > 0) {
+                try referralNFT.credit{value: refCut}(referralId) {
+                    // credited
+                } catch {
+                    refCut = 0; // fall through to protocol
+                }
+            }
+        }
+
+        _sendEth(feeRecipient, fee - refCut);
     }
 }
