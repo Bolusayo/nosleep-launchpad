@@ -1,0 +1,6 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+remappings = ["@openzeppelin/=lib/openzeppelin-contracts/"]
+solc = "C:/Users/Bolu/AppData/Local/Programs/Python/Python314/Scripts/solc.exe"
