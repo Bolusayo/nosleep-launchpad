@@ -149,6 +149,11 @@ async function deployToken() {
     const fee     = await factory.deployFee();
     const value   = fee + f.devBuy;
 
+    await factory.createToken.staticCall(
+      [f.name, f.symbol, f.maxSupply, f.capBps, f.referrer, 0n],
+      { value, from: state.address }
+    );
+
     btn.textContent = 'Confirm in wallet…';
 
     const tx = await factory.createToken(
@@ -186,6 +191,134 @@ async function deployToken() {
   }
 }
 
+
+/* ---------- explore ---------- */
+
+const CURVE_ABI = [
+  'function quoteReserve() view returns (uint256)',
+  'function ethCollected() view returns (uint256)',
+  'function graduated() view returns (bool)',
+  'function curveSupply() view returns (uint256)',
+  'function maxBuyPerWallet() view returns (uint256)',
+  'function buy(uint256) payable',
+  'function sell(uint256,uint256)',
+];
+
+const TOKEN_ABI = [
+  'function name() view returns (string)',
+  'function symbol() view returns (string)',
+  'function balanceOf(address) view returns (uint256)',
+  'function approve(address,uint256) returns (bool)',
+];
+
+function readProvider() {
+  return state.provider ?? new ethers.JsonRpcProvider(CHAIN.rpcUrls[0]);
+}
+
+function ageLabel(ts) {
+  const s = Math.floor(Date.now() / 1000) - Number(ts);
+  if (s < 60)    return `${s}s ago`;
+  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+async function fetchLaunches() {
+  const provider = readProvider();
+  const factory  = factoryContract(provider);
+
+  const count = await factory.launchCount();
+  if (count === 0n) return [];
+
+  const raw = await factory.getLaunches(0, 100);
+
+  return Promise.all(raw.map(async (l) => {
+    const [curveAddr, tokenAddr, creator, referralId, createdAt] = l;
+    const curve = new ethers.Contract(curveAddr, CURVE_ABI, provider);
+    const token = new ethers.Contract(tokenAddr, TOKEN_ABI, provider);
+
+    const [name, symbol, collected, graduated] = await Promise.all([
+      token.name(),
+      token.symbol(),
+      curve.ethCollected(),
+      curve.graduated(),
+    ]);
+
+    const progress = Number((collected * 10000n) / ethers.parseEther('4')) / 100;
+
+    return {
+      curveAddr, tokenAddr, creator, referralId,
+      name, symbol,
+      collected,
+      graduated,
+      progress: Math.min(progress, 100),
+      status: graduated ? 'graduated' : (progress < 10 ? 'new' : 'curve'),
+      age: ageLabel(createdAt),
+    };
+  }));
+}
+
+let LIVE = [];
+let liveTab = 'new';
+
+function renderLive() {
+  const grid = document.getElementById('tokenGrid');
+  if (!grid) return;
+
+  const rows = LIVE.filter((t) => t.status === liveTab);
+
+  document.getElementById('cntNew').textContent   = LIVE.filter(t => t.status === 'new').length;
+  document.getElementById('cntCurve').textContent = LIVE.filter(t => t.status === 'curve').length;
+  document.getElementById('cntGrad').textContent  = LIVE.filter(t => t.status === 'graduated').length;
+
+  grid.innerHTML = '';
+
+  if (rows.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'color:var(--text-faint); font-family:JetBrains Mono,monospace; font-size:13px; padding:24px 0;';
+    empty.textContent = 'No tokens in this category yet.';
+    grid.appendChild(empty);
+    return;
+  }
+
+  for (const t of rows) {
+    const card = document.createElement('div');
+    card.className = 'token-card';
+    card.style.cursor = 'pointer';
+    card.innerHTML = `
+      <div class="tc-head">
+        <div class="tc-icon">◆</div>
+        <div class="tc-id">
+          <div class="tc-name">${t.name}</div>
+          <div class="tc-ticker mono">${t.symbol}</div>
+        </div>
+        <div class="tc-badge ${t.status}">${t.graduated ? 'Graduated' : 'Curve'}</div>
+      </div>
+      <div class="tc-stats mono" style="font-size:12px; color:var(--text-dim); margin:10px 0;">
+        ${ethers.formatEther(t.collected)} / 4 ETH · ${t.age}
+      </div>
+      <div class="snipe-bar"><div class="fill" style="width:${t.progress}%; background:var(--gold);"></div></div>
+      <div class="mono" style="font-size:11px; color:var(--text-faint); margin-top:8px;">
+        ${short(t.tokenAddr)}
+      </div>
+    `;
+    card.addEventListener('click', () => {
+      console.log('Selected:', t.symbol, t.tokenAddr, t.curveAddr);
+      window.__selected = t;
+    });
+    grid.appendChild(card);
+  }
+}
+
+async function refreshExplore() {
+  try {
+    LIVE = await fetchLaunches();
+    renderLive();
+    console.log(`Explore: ${LIVE.length} live token(s)`);
+  } catch (err) {
+    console.error('Explore refresh failed:', err);
+  }
+}
 
 /* ---------- wiring ---------- */
 
