@@ -196,6 +196,7 @@ async function deployToken() {
 
 const CURVE_ABI = [
   'function quoteReserve() view returns (uint256)',
+  'function tokenReserve() view returns (uint256)',
   'function ethCollected() view returns (uint256)',
   'function graduated() view returns (bool)',
   'function curveSupply() view returns (uint256)',
@@ -284,7 +285,6 @@ function renderLive() {
   for (const t of rows) {
     const card = document.createElement('div');
     card.className = 'token-card';
-    card.style.cursor = 'pointer';
     card.innerHTML = `
       <div class="tc-head">
         <div class="tc-icon">◆</div>
@@ -292,20 +292,65 @@ function renderLive() {
           <div class="tc-name">${t.name}</div>
           <div class="tc-ticker mono">${t.symbol}</div>
         </div>
-        <div class="tc-badge ${t.status}">${t.graduated ? 'Graduated' : 'Curve'}</div>
+        <div class="tc-badge">${t.graduated ? 'Graduated' : 'Curve'}</div>
       </div>
-      <div class="tc-stats mono" style="font-size:12px; color:var(--text-dim); margin:10px 0;">
-        ${ethers.formatEther(t.collected)} / 4 ETH · ${t.age}
+      <div class="mono" style="font-size:12px; color:var(--text-dim); margin:10px 0;">
+        ${Number(ethers.formatEther(t.collected)).toFixed(6)} / 4 ETH · ${t.age}
       </div>
       <div class="snipe-bar"><div class="fill" style="width:${t.progress}%; background:var(--gold);"></div></div>
-      <div class="mono" style="font-size:11px; color:var(--text-faint); margin-top:8px;">
-        ${short(t.tokenAddr)}
+      <div class="tc-actions" style="display:flex; gap:0; margin-top:14px;">
+        <button class="side-btn buy active" style="flex:1; padding:9px; background:rgba(62,240,140,.12); color:var(--gold); border:1px solid var(--line-soft); cursor:pointer; font-family:inherit;">Buy</button>
+        <button class="side-btn sell" style="flex:1; padding:9px; background:transparent; color:var(--text-dim); border:1px solid var(--line-soft); cursor:pointer; font-family:inherit;">Sell</button>
       </div>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <input class="trade-amt" placeholder="0.0 ETH"
+          style="flex:1; padding:10px; background:var(--panel-2); border:1px solid var(--line-soft); color:var(--text); font-family:'JetBrains Mono',monospace; font-size:12.5px;">
+        <button class="trade-go"
+          style="padding:10px 14px; background:var(--gold); color:#0a0c0a; border:none; cursor:pointer; font-family:'JetBrains Mono',monospace; font-weight:600; font-size:12.5px;">Buy ${t.symbol}</button>
+      </div>
+      <div class="mono" style="font-size:11px; color:var(--text-faint); margin-top:8px;">${short(t.tokenAddr)}</div>
     `;
-    card.addEventListener('click', () => {
-      console.log('Selected:', t.symbol, t.tokenAddr, t.curveAddr);
-      window.__selected = t;
+
+    let side = 'buy';
+    const buyBtn  = card.querySelector('.side-btn.buy');
+    const sellBtn = card.querySelector('.side-btn.sell');
+    const amtEl   = card.querySelector('.trade-amt');
+    const goBtn   = card.querySelector('.trade-go');
+
+    function setSide(s) {
+      side = s;
+      const on = s === 'buy';
+      buyBtn.style.background  = on ? 'rgba(62,240,140,.12)' : 'transparent';
+      buyBtn.style.color       = on ? 'var(--gold)' : 'var(--text-dim)';
+      sellBtn.style.background = on ? 'transparent' : 'rgba(209,87,74,.12)';
+      sellBtn.style.color      = on ? 'var(--text-dim)' : 'var(--red)';
+      amtEl.placeholder        = on ? '0.0 ETH' : `0.0 ${t.symbol}`;
+      goBtn.textContent        = on ? `Buy ${t.symbol}` : `Sell ${t.symbol}`;
+      goBtn.style.background   = on ? 'var(--gold)' : 'var(--red)';
+    }
+
+    buyBtn.addEventListener('click', () => setSide('buy'));
+    sellBtn.addEventListener('click', () => setSide('sell'));
+
+    goBtn.addEventListener('click', async () => {
+      const v = amtEl.value.trim();
+      if (!v || Number(v) <= 0) { notify('Enter an amount'); return; }
+      goBtn.disabled = true;
+      const label = goBtn.textContent;
+      goBtn.textContent = 'Working…';
+      try {
+        if (side === 'buy') await doBuy(t, v);
+        else                await doSell(t, v);
+        amtEl.value = '';
+      } catch (err) {
+        console.error(err);
+        notify(err.shortMessage || err.reason || 'Trade failed');
+      } finally {
+        goBtn.disabled = false;
+        goBtn.textContent = label;
+      }
     });
+
     grid.appendChild(card);
   }
 }
@@ -319,6 +364,86 @@ async function refreshExplore() {
     console.error('Explore refresh failed:', err);
   }
 }
+
+/* ---------- trading ---------- */
+
+const SLIPPAGE_BPS = 300n; // 3% tolerance
+
+/// Mirrors the contract's curve maths exactly, including ceilDiv rounding.
+function quoteBuy(quoteReserve, tokenReserve, ethIn) {
+  const fee     = (ethIn * 200n) / 10000n;
+  const quoteIn = ethIn - fee;
+  const k       = quoteReserve * tokenReserve;
+  const newQ    = quoteReserve + quoteIn;
+  const newT    = (k + newQ - 1n) / newQ;      // ceilDiv
+  return tokenReserve - newT;
+}
+
+function quoteSell(quoteReserve, tokenReserve, tokensIn) {
+  const k     = quoteReserve * tokenReserve;
+  const newT  = tokenReserve + tokensIn;
+  const newQ  = (k + newT - 1n) / newT;        // ceilDiv
+  const out   = quoteReserve - newQ;
+  const fee   = (out * 200n) / 10000n;
+  return out - fee;
+}
+
+async function curveState(curveAddr) {
+  const c = new ethers.Contract(curveAddr, CURVE_ABI, readProvider());
+  const [q, t] = await Promise.all([c.quoteReserve(), c.tokenReserve()]);
+  return { q, t };
+}
+
+async function doBuy(t, ethAmount) {
+  if (!state.signer) { await connect(); if (!state.signer) return; }
+
+  const value = ethers.parseEther(ethAmount);
+  const { q, t: tr } = await curveState(t.curveAddr);
+
+  const expected = quoteBuy(q, tr, value);
+  const minOut   = (expected * (10000n - SLIPPAGE_BPS)) / 10000n;
+
+  const curve = new ethers.Contract(t.curveAddr, CURVE_ABI, state.signer);
+
+  await curve.buy.staticCall(minOut, { value, from: state.address });
+
+  notify(`Buying ~${Number(ethers.formatEther(expected)).toLocaleString()} ${t.symbol}`);
+  const tx = await curve.buy(minOut, { value });
+  await tx.wait();
+
+  notify(`Bought ${t.symbol}`);
+  await refreshExplore();
+}
+
+async function doSell(t, tokenAmount) {
+  if (!state.signer) { await connect(); if (!state.signer) return; }
+
+  const amount = ethers.parseUnits(tokenAmount, 18);
+  const token  = new ethers.Contract(t.tokenAddr, TOKEN_ABI, state.signer);
+
+  const bal = await token.balanceOf(state.address);
+  if (bal < amount) { notify(`You only hold ${ethers.formatUnits(bal, 18)} ${t.symbol}`); return; }
+
+  const { q, t: tr } = await curveState(t.curveAddr);
+  const expected = quoteSell(q, tr, amount);
+  const minOut   = (expected * (10000n - SLIPPAGE_BPS)) / 10000n;
+
+  notify('Approving…');
+  const approveTx = await token.approve(t.curveAddr, amount);
+  await approveTx.wait();
+
+  const curve = new ethers.Contract(t.curveAddr, CURVE_ABI, state.signer);
+  await curve.sell.staticCall(amount, minOut, { from: state.address });
+
+  notify(`Selling for ~${ethers.formatEther(expected)} ETH`);
+  const tx = await curve.sell(amount, minOut);
+  await tx.wait();
+
+  notify(`Sold ${t.symbol}`);
+  await refreshExplore();
+}
+
+
 
 /* ---------- wiring ---------- */
 
@@ -341,6 +466,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     window.ethereum.on('chainChanged', () => window.location.reload());
   }
+
+  document.querySelectorAll('#exploreTabs .tab-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopImmediatePropagation();
+      liveTab = btn.dataset.tab === 'graduated' ? 'graduated' : btn.dataset.tab;
+      document.querySelectorAll('#exploreTabs .tab-btn')
+        .forEach(b => b.classList.toggle('active', b === btn));
+      renderLive();
+    }, { capture: true });
+  });
+
+  refreshExplore();
 
   console.log('NO SLEEP app.js loaded');
 });
