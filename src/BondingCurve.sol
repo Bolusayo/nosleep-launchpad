@@ -45,6 +45,7 @@ contract BondingCurve is ReentrancyGuard {
     error SlippageExceeded(uint256 got, uint256 wanted);
     error WalletCapExceeded(uint256 attempted, uint256 cap);
     error TransferFailed();
+    error NotFactory();
 
     constructor(
         string memory name_,
@@ -74,39 +75,57 @@ contract BondingCurve is ReentrancyGuard {
     }
 
     function buy(uint256 minTokensOut) external payable nonReentrant {
-        if (graduated) revert AlreadyGraduated();
-        if (msg.value == 0) revert ZeroAmount();
+        _buy(msg.sender, msg.value, minTokensOut, true);
+    }
 
-        // Never take more ETH than the curve has room for.
+    /// Deployer's launch buy — atomic with deployment, exempt from the cap.
+    function buyFor(address beneficiary, uint256 minTokensOut)
+        external
+        payable
+        nonReentrant
+    {
+        if (msg.sender != factory) revert NotFactory();
+        _buy(beneficiary, msg.value, minTokensOut, false);
+    }
+
+    function _buy(
+        address beneficiary,
+        uint256 valueIn,
+        uint256 minTokensOut,
+        bool enforceCap
+    ) private {
+        if (graduated) revert AlreadyGraduated();
+        if (valueIn == 0) revert ZeroAmount();
+
         uint256 room     = VIRTUAL_QUOTE + QUOTE_TARGET - quoteReserve;
         uint256 grossMax = Math.mulDiv(room, BPS, BPS - FEE_BPS);
-        uint256 gross    = msg.value > grossMax ? grossMax : msg.value;
-        uint256 refund   = msg.value - gross;
+        uint256 gross    = valueIn > grossMax ? grossMax : valueIn;
+        uint256 refund   = valueIn - gross;
 
         uint256 fee     = (gross * FEE_BPS) / BPS;
         uint256 quoteIn = gross - fee;
 
-        uint256 k            = quoteReserve * tokenReserve;
-        uint256 newQuote     = quoteReserve + quoteIn;
-        uint256 newTokenRes  = Math.ceilDiv(k, newQuote);
-        uint256 tokensOut    = tokenReserve - newTokenRes;
+        uint256 k           = quoteReserve * tokenReserve;
+        uint256 newQuote    = quoteReserve + quoteIn;
+        uint256 newTokenRes = Math.ceilDiv(k, newQuote);
+        uint256 tokensOut   = tokenReserve - newTokenRes;
 
         if (tokensOut < minTokensOut) revert SlippageExceeded(tokensOut, minTokensOut);
 
-        if (maxBuyPerWallet != 0) {
-            uint256 total = purchased[msg.sender] + tokensOut;
+        if (enforceCap && maxBuyPerWallet != 0) {
+            uint256 total = purchased[beneficiary] + tokensOut;
             if (total > maxBuyPerWallet) revert WalletCapExceeded(total, maxBuyPerWallet);
-            purchased[msg.sender] = total;
+            purchased[beneficiary] = total;
         }
 
         quoteReserve = newQuote;
         tokenReserve = newTokenRes;
 
-        IERC20(address(token)).safeTransfer(msg.sender, tokensOut);
+        IERC20(address(token)).safeTransfer(beneficiary, tokensOut);
         _sendEth(feeRecipient, fee);
-        if (refund > 0) _sendEth(msg.sender, refund);
+        if (refund > 0) _sendEth(beneficiary, refund);
 
-        emit Bought(msg.sender, quoteIn, tokensOut, fee);
+        emit Bought(beneficiary, quoteIn, tokensOut, fee);
 
         if (quoteReserve >= VIRTUAL_QUOTE + QUOTE_TARGET) {
             graduated = true;
