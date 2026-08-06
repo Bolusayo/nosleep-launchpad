@@ -87,8 +87,8 @@ async function connect() {
 /* ---------- contracts ---------- */
 
 const ADDR = {
-  factory: '0x3fbaddDf6619792fa7Ef83C0bE63508c9100A4a0',
-  nft:     '0x172c2D7B1065EB85a6Da4d2E107205b94fb9d753',
+  factory: '0xdF10fffa395bc65f429A6c2cC9C69279454301eF',
+  nft:     '0xb2367529Ff5B56D3d968dD4b3A29C8a1beED6A52',
 };
 
 const FACTORY_ABI = [
@@ -245,7 +245,7 @@ async function fetchLaunches() {
       curve.graduated(),
     ]);
 
-    const progress = Number((collected * 10000n) / ethers.parseEther('4')) / 100;
+    const progress = Number((collected * 10000n) / ethers.parseEther('0.004')) / 100;
 
     return {
       curveAddr, tokenAddr, creator, referralId,
@@ -371,11 +371,18 @@ const SLIPPAGE_BPS = 300n; // 3% tolerance
 
 /// Mirrors the contract's curve maths exactly, including ceilDiv rounding.
 function quoteBuy(quoteReserve, tokenReserve, ethIn) {
-  const fee     = (ethIn * 200n) / 10000n;
-  const quoteIn = ethIn - fee;
+  const VQ = 3000000000000000n;  // 0.003 ether
+  const QT = 4000000000000000n;  // 0.004 ether
+
+  const room     = VQ + QT - quoteReserve;
+  const grossMax = (room * 10000n) / 9800n;
+  const gross    = ethIn > grossMax ? grossMax : ethIn;
+
+  const fee     = (gross * 200n) / 10000n;
+  const quoteIn = gross - fee;
   const k       = quoteReserve * tokenReserve;
   const newQ    = quoteReserve + quoteIn;
-  const newT    = (k + newQ - 1n) / newQ;      // ceilDiv
+  const newT    = (k + newQ - 1n) / newQ;
   return tokenReserve - newT;
 }
 
