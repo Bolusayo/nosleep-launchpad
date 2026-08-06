@@ -132,4 +132,47 @@ contract BondingCurveTest is Test {
 
         assertEq(curve.ethCollected(), 4 ether);
     }
+
+    function test_GraduationBurnsLpTokens() public {
+        vm.prank(alice);
+        curve.buy{value: 50 ether}(0);
+
+        address lp = address(router.lp());
+        uint256 burned = MemeToken(lp).balanceOf(curve.BURN());
+
+        assertGt(burned, 0, "LP must exist");
+        assertEq(curve.lpAmount(), burned, "curve must record what it burned");
+
+        // Nobody else holds any.
+        assertEq(MemeToken(lp).balanceOf(address(curve)), 0);
+        assertEq(MemeToken(lp).balanceOf(creator), 0);
+        assertEq(MemeToken(lp).balanceOf(alice), 0);
+    }
+
+    function test_PoolReceivesFullRaiseAndRemainingSupply() public {
+        vm.prank(alice);
+        curve.buy{value: 50 ether}(0);
+
+        // The router holds the 4 ETH raise and the 20% held back for liquidity.
+        assertEq(address(router).balance, 4 ether);
+        assertEq(token.balanceOf(address(router)), (SUPPLY * 1e18 * 2000) / 10000);
+
+        // The curve keeps nothing.
+        assertEq(address(curve).balance, 0);
+        assertEq(token.balanceOf(address(curve)), 0);
+    }
+
+    /// A failing router must revert the buy, never strand the raise.
+    function test_RevertWhen_RouterFails() public {
+        router.setShouldFail(true);
+
+        vm.prank(alice);
+        vm.expectRevert(BondingCurve.MigrationFailed.selector);
+        curve.buy{value: 50 ether}(0);
+
+        // Nothing moved: no graduation, no ETH taken, curve untouched.
+        assertFalse(curve.graduated());
+        assertEq(curve.ethCollected(), 0);
+        assertEq(alice.balance, 100 ether);
+    }
 }
