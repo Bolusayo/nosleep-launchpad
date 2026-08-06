@@ -183,4 +183,16 @@ contract BondingCurveTest is Test {
 
         assertEq(curve.ethCollected(), QT);
     }
+    
+    function testFuzz_QuoteMatchesActualBuy(uint256 ethIn) public {
+        ethIn = bound(ethIn, QT / 1000, QT * 3);
+
+        (uint256 predicted, ) = curve.quoteBuy(ethIn);
+
+        vm.deal(alice, ethIn);
+        vm.prank(alice);
+        curve.buy{value: ethIn}(0);
+
+        assertEq(token.balanceOf(alice), predicted, "quote must match the trade exactly");
+    }
 }

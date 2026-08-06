@@ -201,6 +201,8 @@ const CURVE_ABI = [
   'function graduated() view returns (bool)',
   'function curveSupply() view returns (uint256)',
   'function maxBuyPerWallet() view returns (uint256)',
+  'function quoteBuy(uint256) view returns (uint256 tokensOut, uint256 ethAccepted)',
+  'function quoteSell(uint256) view returns (uint256)',
   'function buy(uint256) payable',
   'function sell(uint256,uint256)',
 ];
@@ -370,30 +372,6 @@ async function refreshExplore() {
 const SLIPPAGE_BPS = 300n; // 3% tolerance
 
 /// Mirrors the contract's curve maths exactly, including ceilDiv rounding.
-function quoteBuy(quoteReserve, tokenReserve, ethIn) {
-  const VQ = 3000000000000000n;  // 0.003 ether
-  const QT = 4000000000000000n;  // 0.004 ether
-
-  const room     = VQ + QT - quoteReserve;
-  const grossMax = (room * 10000n) / 9800n;
-  const gross    = ethIn > grossMax ? grossMax : ethIn;
-
-  const fee     = (gross * 200n) / 10000n;
-  const quoteIn = gross - fee;
-  const k       = quoteReserve * tokenReserve;
-  const newQ    = quoteReserve + quoteIn;
-  const newT    = (k + newQ - 1n) / newQ;
-  return tokenReserve - newT;
-}
-
-function quoteSell(quoteReserve, tokenReserve, tokensIn) {
-  const k     = quoteReserve * tokenReserve;
-  const newT  = tokenReserve + tokensIn;
-  const newQ  = (k + newT - 1n) / newT;        // ceilDiv
-  const out   = quoteReserve - newQ;
-  const fee   = (out * 200n) / 10000n;
-  return out - fee;
-}
 
 async function curveState(curveAddr) {
   const c = new ethers.Contract(curveAddr, CURVE_ABI, readProvider());
@@ -405,16 +383,24 @@ async function doBuy(t, ethAmount) {
   if (!state.signer) { await connect(); if (!state.signer) return; }
 
   const value = ethers.parseEther(ethAmount);
-  const { q, t: tr } = await curveState(t.curveAddr);
 
-  const expected = quoteBuy(q, tr, value);
-  const minOut   = (expected * (10000n - SLIPPAGE_BPS)) / 10000n;
+  // Check funds first — insufficient balance surfaces as an undecodable
+  // revert otherwise, which is impossible to diagnose.
+  const bal = await state.provider.getBalance(state.address);
+  if (bal < value) {
+    notify(`Insufficient balance — you have ${ethers.formatEther(bal)} ETH`);
+    return;
+  }
 
   const curve = new ethers.Contract(t.curveAddr, CURVE_ABI, state.signer);
 
+  // Ask the contract for the exact quote instead of recomputing it here.
+  const [expected] = await curve.quoteBuy(value);
+  const minOut = (expected * (10000n - SLIPPAGE_BPS)) / 10000n;
+
   await curve.buy.staticCall(minOut, { value, from: state.address });
 
-  notify(`Buying ~${Number(ethers.formatEther(expected)).toLocaleString()} ${t.symbol}`);
+  notify(`Buying ~${Number(ethers.formatUnits(expected, 18)).toLocaleString()} ${t.symbol}`);
   const tx = await curve.buy(minOut, { value });
   await tx.wait();
 
@@ -431,8 +417,8 @@ async function doSell(t, tokenAmount) {
   const bal = await token.balanceOf(state.address);
   if (bal < amount) { notify(`You only hold ${ethers.formatUnits(bal, 18)} ${t.symbol}`); return; }
 
-  const { q, t: tr } = await curveState(t.curveAddr);
-  const expected = quoteSell(q, tr, amount);
+  const curveRead = new ethers.Contract(t.curveAddr, CURVE_ABI, readProvider());
+  const expected  = await curveRead.quoteSell(amount);
   const minOut   = (expected * (10000n - SLIPPAGE_BPS)) / 10000n;
 
   notify('Approving…');

@@ -34,3 +34,12 @@
 - ReferralNFT: `0xb2367529Ff5B56D3d968dD4b3A29C8a1beED6A52`
 - LaunchpadFactory: `0xdF10fffa395bc65f429A6c2cC9C69279454301eF`
 - First graduated token: GHA `0x587d...BaD1`
+
+## Error handling (high priority)
+- [ ] `notify()` writes to the mint page's toast, invisible on the launchpad page.
+      Every failed trade shows the user nothing — button just flicks back to "Buy".
+      Needs a toast that renders on whichever page is active.
+- [ ] Add `quoteBuy(uint256) view returns (uint256)` to BondingCurve so the frontend
+      can get an exact quote instead of reimplementing curve maths in JS.
+- [ ] Check wallet balance before simulating; "missing revert data" with `data=null`
+      usually means insufficient funds, not a contract problem.

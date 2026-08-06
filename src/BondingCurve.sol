@@ -89,6 +89,37 @@ contract BondingCurve is ReentrancyGuard {
         return quoteReserve - VIRTUAL_QUOTE;
     }
 
+    /// Exact token output for a given ETH input, including the partial-fill cap.
+    /// Frontends call this instead of reimplementing the curve maths.
+    function quoteBuy(uint256 ethIn) external view returns (uint256 tokensOut, uint256 ethAccepted) {
+        if (graduated || ethIn == 0) return (0, 0);
+
+        uint256 room     = VIRTUAL_QUOTE + QUOTE_TARGET - quoteReserve;
+        uint256 grossMax = Math.mulDiv(room, BPS, BPS - FEE_BPS);
+        uint256 gross    = ethIn > grossMax ? grossMax : ethIn;
+
+        uint256 fee     = (gross * FEE_BPS) / BPS;
+        uint256 quoteIn = gross - fee;
+
+        uint256 k    = quoteReserve * tokenReserve;
+        uint256 newQ = quoteReserve + quoteIn;
+        uint256 newT = Math.ceilDiv(k, newQ);
+
+        return (tokenReserve - newT, gross);
+    }
+
+    /// Exact ETH output for selling a given token amount, net of fees.
+    function quoteSell(uint256 tokenAmount) external view returns (uint256 ethOut) {
+        if (graduated || tokenAmount == 0) return 0;
+
+        uint256 k    = quoteReserve * tokenReserve;
+        uint256 newT = tokenReserve + tokenAmount;
+        uint256 newQ = Math.ceilDiv(k, newT);
+        uint256 out  = quoteReserve - newQ;
+
+        return out - (out * FEE_BPS) / BPS;
+    }
+
     /// Called once by the factory immediately after deployment.
     function setReferral(ReferralNFT nft, uint256 id, uint16 bps) external {
         if (msg.sender != factory) revert NotFactory();
