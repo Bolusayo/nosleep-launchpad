@@ -87,8 +87,8 @@ async function connect() {
 /* ---------- contracts ---------- */
 
 const ADDR = {
-  factory: '0xdF10fffa395bc65f429A6c2cC9C69279454301eF',
-  nft:     '0xb2367529Ff5B56D3d968dD4b3A29C8a1beED6A52',
+  factory: '0x73fB4AA7933CDA3bEa496ee0C5f1a637CB4B68C4',
+  nft:     '0x4dc3FD897b93A9624EA9B7d696aE24c8f5e5767a',
 };
 
 const FACTORY_ABI = [
@@ -382,6 +382,10 @@ async function curveState(curveAddr) {
 async function doBuy(t, ethAmount) {
   if (!state.signer) { await connect(); if (!state.signer) return; }
 
+  if (!/^\d*\.?\d+$/.test(ethAmount)) {
+    notify('Enter a valid number, e.g. 0.005');
+    return;
+  }
   const value = ethers.parseEther(ethAmount);
 
   // Check funds first — insufficient balance surfaces as an undecodable
