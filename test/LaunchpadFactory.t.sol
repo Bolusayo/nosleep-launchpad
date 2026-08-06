@@ -20,7 +20,8 @@ contract LaunchpadFactoryTest is Test {
     address internal trader   = makeAddr("trader");
 
     uint256 internal constant FEE = 0.002 ether;
-
+    uint256 internal QT;
+    
     function setUp() public {
         router = new MockV2Router();
 
@@ -34,9 +35,12 @@ contract LaunchpadFactoryTest is Test {
         nft.grantRole(nft.DEFAULT_ADMIN_ROLE(), address(factory));
         vm.stopPrank();
 
+        QT = new BondingCurve("x", "X", 1_000_000_000, creator, protocol, 0, address(router)).QUOTE_TARGET();
+
         vm.deal(creator, 100 ether);
         vm.deal(trader,  100 ether);
     }
+
 
     function _params(address ref)
         internal
@@ -67,14 +71,17 @@ contract LaunchpadFactoryTest is Test {
 
     function test_DevBuyIsAtomicAndCapExempt() public {
         // 2% cap on an 800M curve supply = 16M tokens.
-        // A 1 ETH dev buy far exceeds that, and must still succeed.
+        // A dev buy far exceeding that must still succeed.
+        uint256 devBuy = QT / 2;
+        uint256 fee    = (devBuy * 200) / 10_000; // 2% trade fee
+
         vm.prank(creator);
         (address curveAddr, address tokenAddr, ) =
-            factory.createToken{value: FEE + 1 ether}(_params(address(0)));
+            factory.createToken{value: FEE + devBuy}(_params(address(0)));
 
         uint256 bal = MemeToken(tokenAddr).balanceOf(creator);
         assertGt(bal, BondingCurve(curveAddr).maxBuyPerWallet());
-        assertEq(protocol.balance, FEE + 0.02 ether); // deploy fee + 2% trade fee
+        assertEq(protocol.balance, FEE + fee); // deploy fee + trade fee
     }
 
     function test_RevertWhen_FeeTooLow() public {
@@ -108,18 +115,20 @@ contract LaunchpadFactoryTest is Test {
 
         uint256 protocolBefore = protocol.balance;
 
+        uint256 spend  = QT / 10;
+        uint256 fee    = (spend * 200) / 10_000;   // 2% trade fee
+        uint256 refCut = (fee * 1000) / 10_000;    // 10% of the fee
+
         vm.prank(trader);
-        BondingCurve(curveAddr).buy{value: 1 ether}(0);
+        BondingCurve(curveAddr).buy{value: spend}(0);
 
-        // 2% of 1 ETH = 0.02 fee. 10% of that = 0.002 to the referrer.
-        assertEq(nft.pending(refId), 0.002 ether);
-        assertEq(protocol.balance - protocolBefore, 0.018 ether);
+        assertEq(nft.pending(refId), refCut);
+        assertEq(protocol.balance - protocolBefore, fee - refCut);
 
-        // And the referrer can actually withdraw it.
         uint256 before = referrer.balance;
         vm.prank(referrer);
         nft.claim(refId);
-        assertEq(referrer.balance - before, 0.002 ether);
+        assertEq(referrer.balance - before, refCut);
     }
 
     function test_FeesFollowNftToNewOwner() public {
@@ -134,15 +143,19 @@ contract LaunchpadFactoryTest is Test {
         vm.prank(referrer);
         nft.transferFrom(referrer, buyer, refId);
 
-        vm.prank(trader);
-        BondingCurve(curveAddr).buy{value: 1 ether}(0);
+        uint256 spend  = QT / 10;
+        uint256 fee    = (spend * 200) / 10_000;   // 2% trade fee
+        uint256 refCut = (fee * 1000) / 10_000;    // 10% of the fee
 
-        assertEq(nft.pending(refId), 0.002 ether);
+        vm.prank(trader);
+        BondingCurve(curveAddr).buy{value: spend}(0);
+
+        assertEq(nft.pending(refId), refCut);
 
         uint256 before = buyer.balance;
         vm.prank(buyer);
         nft.claim(refId);
-        assertEq(buyer.balance - before, 0.002 ether);
+        assertEq(buyer.balance - before, refCut);
     }
 
     function test_GetLaunchesReturnsNewestFirst() public {

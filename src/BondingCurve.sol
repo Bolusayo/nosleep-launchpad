@@ -15,8 +15,8 @@ contract BondingCurve is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint256 public constant BPS             = 10_000;
-    uint256 public constant VIRTUAL_QUOTE   = 3 ether;
-    uint256 public constant QUOTE_TARGET    = 4 ether;
+    uint256 public constant VIRTUAL_QUOTE   = 0.003 ether;
+    uint256 public constant QUOTE_TARGET    = 0.004 ether;
     uint256 public constant CURVE_SHARE_BPS = 8_000; // 80%
     uint256 public constant FEE_BPS         = 200;   // 2% trading fee
     address public constant BURN = 0x000000000000000000000000000000000000dEaD;
