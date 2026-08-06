@@ -484,6 +484,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { capture: true });
   });
 
+  // Original script declares these switches but never binds them.
+  document.querySelectorAll('.switch').forEach((sw) => {
+    sw.addEventListener('click', () => {
+      sw.classList.toggle('on');
+      const panel = sw.parentElement?.querySelector('.switch-panel')
+                 || sw.closest('.field')?.querySelector('.snipe-panel');
+      if (panel) panel.style.opacity = sw.classList.contains('on') ? '1' : '0.4';
+    });
+  });
+
   refreshExplore();
 
   console.log('NO SLEEP app.js loaded');
