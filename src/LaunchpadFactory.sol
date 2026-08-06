@@ -12,6 +12,7 @@ contract LaunchpadFactory is Ownable, ReentrancyGuard {
     uint256 public constant BPS = 10_000;
 
     ReferralNFT public immutable referralNFT;
+    address     public immutable router;
 
     uint256 public deployFee = 0.002 ether;
     uint16  public referralCommissionBps = 1_000; // 10% of the 2% trade fee
@@ -41,11 +42,12 @@ contract LaunchpadFactory is Ownable, ReentrancyGuard {
     error InsufficientFee(uint256 sent, uint256 required);
     error SendFailed();
 
-    constructor(address owner_, address feeRecipient_, ReferralNFT nft)
+    constructor(address owner_, address feeRecipient_, ReferralNFT nft, address router_)
         Ownable(owner_)
     {
         feeRecipient = feeRecipient_;
         referralNFT  = nft;
+        router       = router_;
     }
 
     struct LaunchParams {
@@ -72,7 +74,8 @@ contract LaunchpadFactory is Ownable, ReentrancyGuard {
             p.maxSupply,
             msg.sender,
             feeRecipient,
-            p.capBps
+            p.capBps,
+            router
         );
 
         curveAddr = address(curve);

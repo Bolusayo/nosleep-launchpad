@@ -6,10 +6,12 @@ import {LaunchpadFactory} from "../src/LaunchpadFactory.sol";
 import {ReferralNFT} from "../src/ReferralNFT.sol";
 import {BondingCurve} from "../src/BondingCurve.sol";
 import {MemeToken} from "../src/MemeToken.sol";
+import {MockV2Router} from "../src/mocks/MockV2Router.sol";
 
 contract LaunchpadFactoryTest is Test {
     LaunchpadFactory internal factory;
     ReferralNFT      internal nft;
+    MockV2Router internal router;
 
     address internal admin    = makeAddr("admin");
     address internal protocol = makeAddr("protocol");
@@ -20,10 +22,13 @@ contract LaunchpadFactoryTest is Test {
     uint256 internal constant FEE = 0.002 ether;
 
     function setUp() public {
+        router = new MockV2Router();
+
         vm.startPrank(admin);
         nft     = new ReferralNFT(admin);
-        factory = new LaunchpadFactory(admin, protocol, nft);
-
+        factory = new LaunchpadFactory(admin, protocol, nft, address(router));
+        
+        
         // The factory mints NFTs and grants each curve the right to credit them.
         nft.grantRole(nft.MINTER_ROLE(), address(factory));
         nft.grantRole(nft.DEFAULT_ADMIN_ROLE(), address(factory));

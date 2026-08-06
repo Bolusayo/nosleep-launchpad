@@ -4,10 +4,12 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {BondingCurve} from "../src/BondingCurve.sol";
 import {MemeToken} from "../src/MemeToken.sol";
+import {MockV2Router} from "../src/mocks/MockV2Router.sol";
 
 contract BondingCurveTest is Test {
     BondingCurve internal curve;
     MemeToken    internal token;
+    MockV2Router internal router;
 
     address internal creator = makeAddr("creator");
     address internal feeTo   = makeAddr("feeTo");
@@ -17,7 +19,8 @@ contract BondingCurveTest is Test {
     uint256 internal constant SUPPLY = 1_000_000_000;
 
     function setUp() public {
-        curve = new BondingCurve("Fault Line", "FAULT", SUPPLY, creator, feeTo, 0);
+        router = new MockV2Router();
+        curve = new BondingCurve("Fault Line", "FAULT", SUPPLY, creator, feeTo, 0, address(router));
         token = curve.token();
 
         vm.deal(alice, 100 ether);
@@ -106,7 +109,7 @@ contract BondingCurveTest is Test {
 
     function test_WalletCapEnforced() public {
         BondingCurve capped =
-            new BondingCurve("Capped", "CAP", SUPPLY, creator, feeTo, 200); // 2%
+            new BondingCurve("Capped", "CAP", SUPPLY, creator, feeTo, 200, address(router)); // 2%
 
         uint256 cap = capped.maxBuyPerWallet();
         assertEq(cap, (capped.curveSupply() * 200) / 10_000);

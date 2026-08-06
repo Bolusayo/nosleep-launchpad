@@ -7,7 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MemeToken} from "./MemeToken.sol";
 import {ReferralNFT} from "./ReferralNFT.sol";
-
+import {IUniswapV2Router} from "./interfaces/IUniswapV2Router.sol";
 /// @notice Constant-product bonding curve with virtual reserves.
 ///         Deploys its own token and holds 100% of the supply:
 ///         80% sells on the curve, 20% seeds the DEX pool at graduation.
@@ -19,6 +19,8 @@ contract BondingCurve is ReentrancyGuard {
     uint256 public constant QUOTE_TARGET    = 4 ether;
     uint256 public constant CURVE_SHARE_BPS = 8_000; // 80%
     uint256 public constant FEE_BPS         = 200;   // 2% trading fee
+    address public constant BURN = 0x000000000000000000000000000000000000dEaD;
+
 
     MemeToken public immutable token;
     address   public immutable creator;
@@ -33,6 +35,10 @@ contract BondingCurve is ReentrancyGuard {
     uint256 public quoteReserve; // virtual + real ETH
     uint256 public tokenReserve; // virtual token reserve
     bool    public graduated;
+
+    IUniswapV2Router public immutable router;
+    address public lpToken;
+    uint256 public lpAmount;
 
     /// Referral NFT that earns a cut of this token's fees. Set once by the factory.
     ReferralNFT public referralNFT;
@@ -60,8 +66,10 @@ contract BondingCurve is ReentrancyGuard {
         uint256 maxSupplyTokens,
         address creator_,
         address feeRecipient_,
-        uint256 capBps
+        uint256 capBps,
+        address router_
     ) {
+        router = IUniswapV2Router(router_);
         token   = new MemeToken(name_, symbol_, maxSupplyTokens, address(this), creator_);
         creator = creator_;
         factory = msg.sender;
@@ -144,8 +152,7 @@ contract BondingCurve is ReentrancyGuard {
         emit Bought(beneficiary, quoteIn, tokensOut, fee);
 
         if (quoteReserve >= VIRTUAL_QUOTE + QUOTE_TARGET) {
-            graduated = true;
-            emit Graduated(ethCollected(), token.balanceOf(address(this)));
+            _graduate();
         }
     }
 
@@ -172,6 +179,41 @@ contract BondingCurve is ReentrancyGuard {
 
         emit Sold(msg.sender, tokenAmount, net, fee);
     }
+
+
+    event MigratedToDex(address lpToken, uint256 ethIn, uint256 tokensIn, uint256 liquidity);
+
+    error MigrationFailed();
+
+    /// Moves the raise plus the remaining 20% of supply into a Uniswap V2 pool.
+    /// LP tokens are sent to address(0) — liquidity is permanently locked.
+    function _graduate() private {
+        graduated = true;
+
+        uint256 ethForLp    = ethCollected();
+        uint256 tokensForLp = token.balanceOf(address(this));
+
+        emit Graduated(ethForLp, tokensForLp);
+
+        if (address(router) == address(0) || ethForLp == 0 || tokensForLp == 0) return;
+
+        IERC20(address(token)).forceApprove(address(router), tokensForLp);
+
+        try router.addLiquidityETH{value: ethForLp}(
+            address(token),
+            tokensForLp,
+            (tokensForLp * 9000) / BPS,   // 10% slippage tolerance
+            (ethForLp * 9000) / BPS,
+            BURN,                    // LP burned on arrival
+            block.timestamp
+        ) returns (uint256 amountToken, uint256 amountETH, uint256 liquidity) {
+            lpAmount = liquidity;
+            emit MigratedToDex(lpToken, amountETH, amountToken, liquidity);
+        } catch {
+            revert MigrationFailed();
+        }
+    }
+
 
     function _sendEth(address to, uint256 amount) private {
         if (amount == 0) return;
