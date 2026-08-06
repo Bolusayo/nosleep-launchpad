@@ -43,3 +43,15 @@
       can get an exact quote instead of reimplementing curve maths in JS.
 - [ ] Check wallet balance before simulating; "missing revert data" with `data=null`
       usually means insufficient funds, not a contract problem.
+
+## Done (this session)
+- [x] Anti-snipe toggle wired in app.js
+- [x] quoteBuy/quoteSell moved on-chain; JS reimplementation deleted
+- [x] Balance check before simulating
+- [x] Input validation rejects non-numeric amounts
+- [x] LIBYA graduated via UI in two clicks — no console
+
+## Current testnet deployment (supersedes earlier addresses)
+- MockV2Router: 0xA13218B5F8099cE7C197C7f451DB77D56f59f093
+- ReferralNFT: 0x4dc3FD897b93A9624EA9B7d696aE24c8f5e5767a
+- LaunchpadFactory: 0x73fB4AA7933CDA3bEa496ee0C5f1a637CB4B68C4

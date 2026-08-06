@@ -27,13 +27,43 @@ function setConnectLabel(text) {
   });
 }
 
-function notify(msg) {
-  // Reuses the existing toast element from the mint section.
-  const toast = document.getElementById('toast');
-  if (!toast) { console.log(msg); return; }
-  toast.textContent = msg;
-  toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 3200);
+function notify(msg, kind = 'info') {
+  console.log('[notify]', msg);
+
+  let el = document.getElementById('nsToast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'nsToast';
+    el.style.cssText = `
+      position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%) translateY(20px);
+      max-width: min(560px, 90vw); padding: 13px 20px;
+      background: #10130f; border: 1px solid #2a2f27; border-left-width: 3px;
+      color: #e8ece4; font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 13px; line-height: 1.45; letter-spacing: -0.01em;
+      z-index: 99999; opacity: 0; pointer-events: none;
+      transition: opacity .22s ease, transform .22s ease;
+      box-shadow: 0 12px 40px rgba(0,0,0,.55);
+      word-break: break-word;
+    `;
+    document.body.appendChild(el);
+  }
+
+  const accent = kind === 'error' ? '#d1574a'
+               : kind === 'success' ? '#3ef08c'
+               : '#c9a227';
+  el.style.borderLeftColor = accent;
+  el.textContent = msg;
+
+  requestAnimationFrame(() => {
+    el.style.opacity = '1';
+    el.style.transform = 'translateX(-50%) translateY(0)';
+  });
+
+  clearTimeout(el._t);
+  el._t = setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(-50%) translateY(20px)';
+  }, kind === 'error' ? 6000 : 3400);
 }
 
 /* ---------- wallet ---------- */
@@ -80,7 +110,7 @@ async function connect() {
   } catch (err) {
     console.error(err);
     setConnectLabel('Connect wallet');
-    notify(err.shortMessage || err.message || 'Connection failed');
+    notify(err.shortMessage || err.message || 'Connection failed', 'error');
   }
 }
 
@@ -185,7 +215,7 @@ async function deployToken() {
     setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 4000);
   } catch (err) {
     console.error(err);
-    notify(err.shortMessage || err.reason || 'Deploy failed');
+    notify(err.shortMessage || err.reason || 'Deploy failed', 'error');
     btn.textContent = original;
     btn.disabled = false;
   }
@@ -346,7 +376,7 @@ function renderLive() {
         amtEl.value = '';
       } catch (err) {
         console.error(err);
-        notify(err.shortMessage || err.reason || 'Trade failed');
+        notify(err.shortMessage || err.reason || 'Trade failed', 'error');
       } finally {
         goBtn.disabled = false;
         goBtn.textContent = label;
