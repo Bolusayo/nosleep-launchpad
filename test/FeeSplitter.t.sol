@@ -161,4 +161,61 @@ contract FeeSplitterTest is Test {
 
         assertGt(marketing.balance, 0);
     }
+
+    function test_AddLiquidityPairsAndBurnsLp() public {
+        vm.deal(address(router), 100 ether);
+        _fund(10_000e18);
+        splitter.process();
+
+        // 40% of 10,000 = 4,000 tokens allocated to liquidity
+        assertEq(splitter.liquidityPool(), 4_000e18);
+
+        address lp = address(router.lp());
+        uint256 burnedBefore = MemeToken(lp).balanceOf(splitter.BURN());
+
+        splitter.addLiquidity(0);
+
+        assertEq(splitter.liquidityPool(), 0, "allocation must be drained");
+        assertGt(
+            MemeToken(lp).balanceOf(splitter.BURN()),
+            burnedBefore,
+            "LP must be minted to the burn address"
+        );
+    }
+
+    function test_RevertWhen_NoLiquidityAllocated() public {
+        vm.expectRevert(FeeSplitter.NothingAllocated.selector);
+        splitter.addLiquidity(0);
+    }
+
+    function test_FailedLiquiditySwapRevertsCleanly() public {
+        vm.deal(address(router), 100 ether);
+        _fund(10_000e18);
+        splitter.process();
+
+        router.setShouldFail(true);
+
+        vm.expectRevert();
+        splitter.addLiquidity(0);
+
+        assertEq(splitter.liquidityPool(), 4_000e18, "allocation must survive");
+    }
+
+    /// Full cycle: split, pay marketing, add liquidity. Nothing stranded
+    /// except the dividend pool, which is held deliberately.
+    function test_FullCycleLeavesOnlyDividends() public {
+        vm.deal(address(router), 100 ether);
+        _fund(10_000e18);
+
+        splitter.process();
+        splitter.payMarketing(0);
+        splitter.addLiquidity(0);
+
+        assertEq(splitter.liquidityPool(), 0);
+        assertEq(splitter.marketingPool(), 0);
+        assertEq(splitter.dividendPool(), 3_000e18);
+
+        // Burned 10%, dividends held, the rest swapped or paired away.
+        assertEq(token.balanceOf(splitter.BURN()), 1_000e18);
+    }
 }

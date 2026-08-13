@@ -42,6 +42,8 @@ contract FeeSplitter is ReentrancyGuard {
 
     event Processed(uint256 liquidity, uint256 burned, uint256 marketing, uint256 dividends);
     event MarketingPaid(address indexed to, uint256 ethAmount);
+    event LiquidityAdded(uint256 tokenAmount, uint256 ethAmount, uint256 liquidity);
+
 
     error SplitMustBeTotal(uint256 given);
     error BelowThreshold(uint256 balance, uint256 needed);
@@ -124,6 +126,47 @@ contract FeeSplitter is ReentrancyGuard {
         if (!ok) revert SendFailed();
 
         emit MarketingPaid(marketing, ethOut);
+    }
+
+    /// Converts half the liquidity allocation to ETH and pairs it with the
+    /// other half. LP goes to the burn address, same as graduation.
+    function addLiquidity(uint256 minEthOut) external nonReentrant {
+        uint256 amount = liquidityPool;
+        if (amount < 2) revert NothingAllocated();
+
+        liquidityPool = 0;
+
+        uint256 half      = amount / 2;
+        uint256 otherHalf = amount - half;
+
+        // Swap half for ETH.
+        IERC20(address(token)).forceApprove(address(router), half);
+
+        address[] memory path = new address[](2);
+        path[0] = address(token);
+        path[1] = router.WETH();
+
+        uint256 ethBefore = address(this).balance;
+        router.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            half, minEthOut, path, address(this), block.timestamp
+        );
+        uint256 ethOut = address(this).balance - ethBefore;
+
+        if (ethOut == 0) revert NothingAllocated();
+
+        // Pair the other half with the ETH we just received.
+        IERC20(address(token)).forceApprove(address(router), otherHalf);
+
+        (, , uint256 liquidity) = router.addLiquidityETH{value: ethOut}(
+            address(token),
+            otherHalf,
+            0,          // ratio is set by the pool; we take what we get
+            0,
+            BURN,
+            block.timestamp
+        );
+
+        emit LiquidityAdded(otherHalf, ethOut, liquidity);
     }
 
     receive() external payable {}
