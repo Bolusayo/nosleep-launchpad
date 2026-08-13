@@ -117,13 +117,12 @@ async function connect() {
 /* ---------- contracts ---------- */
 
 const ADDR = {
-  factory: '0x73fB4AA7933CDA3bEa496ee0C5f1a637CB4B68C4',
-  nft:     '0x4dc3FD897b93A9624EA9B7d696aE24c8f5e5767a',
+  factory: '0x722755a6410018Aa877d7E80F928c69150128426',
+  nft:     '0x3FBB91104139DB14b786F607f05E76dB18F5ab12',
 };
 
 const FACTORY_ABI = [
-  'function createToken((string,string,uint256,uint256,address,uint256)) payable returns (address,address,uint256)',
-  'function deployFee() view returns (uint256)',
+  'function createToken((string,string,uint256,uint256,address,uint256,uint16,uint16,uint32,address,uint16,uint16,uint16,uint16)) payable returns (address,address,uint256)',  'function deployFee() view returns (uint256)',
   'function launchCount() view returns (uint256)',
   'function getLaunches(uint256,uint256) view returns ((address,address,address,uint256,uint64)[])',
   'event TokenLaunched(address indexed creator, address indexed token, address curve, uint256 referralId, uint256 devBuy)',
@@ -134,6 +133,7 @@ function factoryContract(runner) {
 }
 
 /* ---------- deploy ---------- */
+
 
 function readForm() {
   const exp = parseFloat(document.getElementById('supplySlider').value);
@@ -150,13 +150,29 @@ function readForm() {
   const devBuyRaw = document.getElementById('devBuyAmt').value.trim();
   const devBuy    = devBuyRaw ? ethers.parseEther(devBuyRaw) : 0n;
 
+  // Tax is only meaningful when the switch is on.
+  const taxOn = document.getElementById('taxSwitch')?.classList.contains('on');
+  const pct   = (id) => BigInt(Math.round(parseFloat(document.getElementById(id).value) * 100));
+
+  const buyTaxBps  = taxOn ? pct('buyTax')  : 0n;
+  const sellTaxBps = taxOn ? pct('sellTax') : 0n;
+  const taxDays    = taxOn ? BigInt(parseInt(document.getElementById('taxDur').value, 10)) : 0n;
+
+  const mktRaw    = document.getElementById('mktWallet').value.trim();
+  const marketing = ethers.isAddress(mktRaw) ? mktRaw : ethers.ZeroAddress;
+
+  const liquidityBps = taxOn ? pct('lpBps')   : 0n;
+  const burnBps      = taxOn ? pct('burnBps') : 0n;
+  const marketingBps = taxOn ? pct('mktBps')  : 0n;
+  const dividendBps  = taxOn ? pct('divBps2') : 0n;
+
   return {
     name:   document.getElementById('tokenName').value.trim(),
     symbol: document.getElementById('tokenTicker').value.trim(),
-    maxSupply,
-    capBps,
-    referrer,
-    devBuy,
+    maxSupply, capBps, referrer, devBuy,
+    buyTaxBps, sellTaxBps, taxDays,
+    marketing, liquidityBps, burnBps, marketingBps, dividendBps,
+    taxOn,
   };
 }
 
@@ -179,17 +195,16 @@ async function deployToken() {
     const fee     = await factory.deployFee();
     const value   = fee + f.devBuy;
 
-    await factory.createToken.staticCall(
-      [f.name, f.symbol, f.maxSupply, f.capBps, f.referrer, 0n],
-      { value, from: state.address }
-    );
+    const params = [
+      f.name, f.symbol, f.maxSupply, f.capBps, f.referrer, 0n,
+      f.buyTaxBps, f.sellTaxBps, f.taxDays,
+      f.marketing, f.liquidityBps, f.burnBps, f.marketingBps, f.dividendBps
+    ];
+
+    await factory.createToken.staticCall(params, { value, from: state.address });
 
     btn.textContent = 'Confirm in wallet…';
-
-    const tx = await factory.createToken(
-      [f.name, f.symbol, f.maxSupply, f.capBps, f.referrer, 0n],
-      { value }
-    );
+    const tx = await factory.createToken(params, { value });
 
     btn.textContent = 'Deploying…';
     notify('Transaction sent — waiting for confirmation');
@@ -506,12 +521,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Original script declares these switches but never binds them.
   document.querySelectorAll('.switch').forEach((sw) => {
-    sw.addEventListener('click', () => {
+    sw.addEventListener('click', (e) => {
+      e.stopImmediatePropagation();
       sw.classList.toggle('on');
-      const panel = sw.parentElement?.querySelector('.switch-panel')
-                 || sw.closest('.field')?.querySelector('.snipe-panel');
-      if (panel) panel.style.opacity = sw.classList.contains('on') ? '1' : '0.4';
-    });
+    }, { capture: true });
   });
 
   refreshExplore();
