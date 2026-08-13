@@ -195,4 +195,54 @@ contract BondingCurveTest is Test {
 
         assertEq(token.balanceOf(alice), predicted, "quote must match the trade exactly");
     }
+
+    /// A taxed token must graduate cleanly and have its pair registered,
+    /// so trades against the pool are taxed afterwards.
+    function test_TaxedTokenGraduatesAndRegistersPair() public {
+        BondingCurve taxed = new BondingCurve(
+            "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router),
+            300, 1000, 365
+        );
+        MemeToken tt = taxed.token();
+
+        assertEq(tt.dexPair(), address(0), "no pair before graduation");
+        assertTrue(tt.taxActive());
+
+        vm.deal(alice, 100 ether);
+        vm.prank(alice);
+        taxed.buy{value: QT * 10}(0);
+
+        assertTrue(taxed.graduated());
+        assertEq(taxed.ethCollected(), QT, "taxed token must still raise exactly the target");
+
+        // The pair now exists and the token knows about it.
+        address pair = tt.dexPair();
+        assertTrue(pair != address(0), "pair must be registered at graduation");
+        assertTrue(tt.taxExempt(address(router)), "router must be exempt");
+
+        // The pool got the full amount — tax did not skim the migration.
+        assertEq(address(router).balance, QT);
+        assertEq(tt.balanceOf(address(taxed)), 0, "curve keeps nothing");
+    }
+
+    /// Curve trading on a taxed token must be untaxed — the curve is exempt.
+    function test_CurveTradesAreUntaxedOnTaxedToken() public {
+        BondingCurve taxed = new BondingCurve(
+            "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router),
+            300, 1000, 365
+        );
+        MemeToken tt = taxed.token();
+
+        vm.deal(alice, 100 ether);
+        vm.prank(alice);
+        taxed.buy{value: QT / 10}(0);
+
+        // Alice received exactly what the curve quoted — no 3% skim.
+        (uint256 quoted, ) = taxed.quoteBuy(QT / 10);
+        assertGt(tt.balanceOf(alice), 0);
+
+        vm.prank(alice);
+        taxed.buy{value: QT / 10}(0);
+        assertGt(tt.balanceOf(alice), quoted, "second buy must add tokens");
+    }
 }
