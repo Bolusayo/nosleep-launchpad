@@ -6,6 +6,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MemeToken} from "./MemeToken.sol";
+import {FeeSplitter} from "./FeeSplitter.sol";
 import {ReferralNFT} from "./ReferralNFT.sol";
 import {IUniswapV2Router, IUniswapV2Factory} from "./interfaces/IUniswapV2Router.sol";
 /// @notice Constant-product bonding curve with virtual reserves.
@@ -39,6 +40,14 @@ contract BondingCurve is ReentrancyGuard {
     IUniswapV2Router public immutable router;
     address public lpToken;
     uint256 public lpAmount;
+    
+    FeeSplitter public splitter;
+
+    address public immutable marketing;
+    uint16  public immutable liquidityBps;
+    uint16  public immutable burnBps;
+    uint16  public immutable marketingBps;
+    uint16  public immutable dividendBps;
 
     /// Referral NFT that earns a cut of this token's fees. Set once by the factory.
     ReferralNFT public referralNFT;
@@ -70,7 +79,13 @@ contract BondingCurve is ReentrancyGuard {
         address router_,
         uint16  buyTaxBps_,
         uint16  sellTaxBps_,
-        uint32  taxDurationDays_
+        uint32  taxDurationDays_,
+        address marketing_,
+        uint16  liquidityBps_,
+        uint16  burnBps_,
+        uint16  marketingBps_,
+        uint16  dividendBps_
+    
     ) {
         router = IUniswapV2Router(router_);
         token   = new MemeToken(
@@ -80,6 +95,11 @@ contract BondingCurve is ReentrancyGuard {
         creator = creator_;
         factory = msg.sender;
         feeRecipient = feeRecipient_;
+        marketing    = marketing_ == address(0) ? creator_ : marketing_;
+        liquidityBps = liquidityBps_;
+        burnBps      = burnBps_;
+        marketingBps = marketingBps_;
+        dividendBps  = dividendBps_;
 
         uint256 s = (token.totalSupply() * CURVE_SHARE_BPS) / BPS;
         curveSupply = s;
@@ -219,6 +239,7 @@ contract BondingCurve is ReentrancyGuard {
 
 
     event MigratedToDex(address lpToken, uint256 ethIn, uint256 tokensIn, uint256 liquidity);
+    event SplitterDeployed(address splitter);
 
     error MigrationFailed();
 
@@ -252,6 +273,7 @@ contract BondingCurve is ReentrancyGuard {
         ) returns (uint256 amountToken, uint256 amountETH, uint256 liquidity) {
             lpAmount = liquidity;
             _registerPair();
+            _deploySplitter();
             emit MigratedToDex(lpToken, amountETH, amountToken, liquidity);
         } catch {
             revert MigrationFailed();
@@ -271,6 +293,24 @@ contract BondingCurve is ReentrancyGuard {
                     token.setDexPair(pair);
                 }
             } catch {}
+        } catch {}
+    }
+
+    /// Taxed tokens get a splitter; untaxed ones don't need one.
+    /// Never reverts — a missing splitter means tax keeps accruing to the
+    /// curve, which is recoverable. A revert here would strand the raise.
+    function _deploySplitter() private {
+        if (token.buyTaxBps() == 0 && token.sellTaxBps() == 0) return;
+        if (liquidityBps + burnBps + marketingBps + dividendBps != BPS) return;
+
+        try new FeeSplitter(
+            token, router, marketing,
+            liquidityBps, burnBps, marketingBps, dividendBps,
+            curveSupply / 10_000        // threshold: 0.01% of curve supply
+        ) returns (FeeSplitter s) {
+            splitter = s;
+            token.setTaxCollector(address(s));
+            emit SplitterDeployed(address(s));
         } catch {}
     }
 

@@ -60,6 +60,11 @@ contract LaunchpadFactory is Ownable, ReentrancyGuard {
         uint16  buyTaxBps;
         uint16  sellTaxBps;
         uint32  taxDurationDays;
+        address marketing;
+        uint16  liquidityBps;
+        uint16  burnBps;
+        uint16  marketingBps;
+        uint16  dividendBps;
     }
 
     function createToken(LaunchParams calldata p)
@@ -81,7 +86,12 @@ contract LaunchpadFactory is Ownable, ReentrancyGuard {
             router,
             p.buyTaxBps,
             p.sellTaxBps,
-            p.taxDurationDays
+            p.taxDurationDays,
+            p.marketing,
+            p.liquidityBps,
+            p.burnBps,
+            p.marketingBps,
+            p.dividendBps
         );
 
         curveAddr = address(curve);

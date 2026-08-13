@@ -24,7 +24,7 @@ contract BondingCurveTest is Test {
 
     function setUp() public {
         router = new MockV2Router();
-        curve  = new BondingCurve("Fault Line", "FAULT", SUPPLY, creator, feeTo, 0, address(router), 0, 0, 0);
+        curve  = new BondingCurve("Fault Line", "FAULT", SUPPLY, creator, feeTo, 0, address(router), 0, 0, 0, address(0), 0, 0, 0, 0);
         token  = curve.token();
 
         VQ = curve.VIRTUAL_QUOTE();
@@ -121,8 +121,7 @@ contract BondingCurveTest is Test {
 
     function test_WalletCapEnforced() public {
         BondingCurve capped =
-            new BondingCurve("Capped", "CAP", SUPPLY, creator, feeTo, 200, address(router), 0, 0, 0);
-
+            new BondingCurve("Capped", "CAP", SUPPLY, creator, feeTo, 200, address(router), 0, 0, 0, address(0), 0, 0, 0, 0);
         uint256 cap = capped.maxBuyPerWallet();
         assertEq(cap, (capped.curveSupply() * 200) / 10_000);
 
@@ -201,7 +200,8 @@ contract BondingCurveTest is Test {
     function test_TaxedTokenGraduatesAndRegistersPair() public {
         BondingCurve taxed = new BondingCurve(
             "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router),
-            300, 1000, 365
+            300, 1000, 365,
+            makeAddr("marketing"), 4000, 1000, 2000, 3000
         );
         MemeToken tt = taxed.token();
 
@@ -229,7 +229,8 @@ contract BondingCurveTest is Test {
     function test_CurveTradesAreUntaxedOnTaxedToken() public {
         BondingCurve taxed = new BondingCurve(
             "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router),
-            300, 1000, 365
+            300, 1000, 365,
+            makeAddr("marketing"), 4000, 1000, 2000, 3000
         );
         MemeToken tt = taxed.token();
 
@@ -244,5 +245,34 @@ contract BondingCurveTest is Test {
         vm.prank(alice);
         taxed.buy{value: QT / 10}(0);
         assertGt(tt.balanceOf(alice), quoted, "second buy must add tokens");
+    }
+
+    function test_SplitterDeployedForTaxedToken() public {
+        BondingCurve taxed = new BondingCurve(
+            "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router),
+            300, 1000, 365,
+            makeAddr("marketing"), 4000, 1000, 2000, 3000
+        );
+        MemeToken tt = taxed.token();
+
+        assertEq(address(taxed.splitter()), address(0), "none before graduation");
+        assertEq(tt.taxCollector(), address(taxed), "curve collects during the curve");
+
+        vm.deal(alice, 100 ether);
+        vm.prank(alice);
+        taxed.buy{value: QT * 10}(0);
+
+        address s = address(taxed.splitter());
+        assertTrue(s != address(0), "splitter must exist after graduation");
+        assertEq(tt.taxCollector(), s, "tax must redirect to the splitter");
+        assertTrue(tt.taxExempt(s), "splitter must be exempt");
+    }
+
+    function test_NoSplitterForUntaxedToken() public {
+        vm.prank(alice);
+        curve.buy{value: QT * 10}(0);
+
+        assertTrue(curve.graduated());
+        assertEq(address(curve.splitter()), address(0), "untaxed tokens need no splitter");
     }
 }
