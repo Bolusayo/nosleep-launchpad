@@ -10,9 +10,15 @@ contract MockV2Router {
 
     ERC20 public lp;
     bool  public shouldFail;
+    MockV2Factory public factoryContract;
 
     constructor() {
         lp = new MockLP();
+        factoryContract = new MockV2Factory();
+    }
+
+    function factory() external view returns (address) {
+        return address(factoryContract);
     }
 
     function setShouldFail(bool v) external { shouldFail = v; }
@@ -37,6 +43,10 @@ contract MockV2Router {
         uint256 liquidity = _sqrt(amountTokenDesired * msg.value);
         MockLP(address(lp)).mint(to, liquidity);
 
+        if (factoryContract.getPair(token, WETH) == address(0)) {
+            factoryContract.createPair(token, WETH);
+        }
+
         return (amountTokenDesired, msg.value, liquidity);
     }
 
@@ -52,4 +62,18 @@ contract MockV2Router {
 contract MockLP is ERC20 {
     constructor() ERC20("Mock LP", "MLP") {}
     function mint(address to, uint256 amount) external { _mint(to, amount); }
+}
+
+contract MockV2Factory {
+    mapping(address => mapping(address => address)) public pairs;
+
+    function getPair(address a, address b) external view returns (address) {
+        return pairs[a][b];
+    }
+
+    function createPair(address a, address b) external returns (address pair) {
+        pair = address(uint160(uint256(keccak256(abi.encode(a, b)))));
+        pairs[a][b] = pair;
+        pairs[b][a] = pair;
+    }
 }

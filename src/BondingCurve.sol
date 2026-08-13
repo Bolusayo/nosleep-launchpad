@@ -7,7 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MemeToken} from "./MemeToken.sol";
 import {ReferralNFT} from "./ReferralNFT.sol";
-import {IUniswapV2Router} from "./interfaces/IUniswapV2Router.sol";
+import {IUniswapV2Router, IUniswapV2Factory} from "./interfaces/IUniswapV2Router.sol";
 /// @notice Constant-product bonding curve with virtual reserves.
 ///         Deploys its own token and holds 100% of the supply:
 ///         80% sells on the curve, 20% seeds the DEX pool at graduation.
@@ -222,8 +222,9 @@ contract BondingCurve is ReentrancyGuard {
 
     error MigrationFailed();
 
-    /// Moves the raise plus the remaining 20% of supply into a Uniswap V2 pool.
-    /// LP tokens are sent to address(0) — liquidity is permanently locked.
+    /// Moves the raise plus the remaining supply (and any accrued tax) into a
+    /// Uniswap V2 pool. LP is burned. For taxed tokens the pair is registered
+    /// on the token afterwards so post-graduation trades are taxed.
     function _graduate() private {
         graduated = true;
 
@@ -234,23 +235,44 @@ contract BondingCurve is ReentrancyGuard {
 
         if (address(router) == address(0) || ethForLp == 0 || tokensForLp == 0) return;
 
+        // The router must be exempt: it holds tokens briefly between the
+        // transferFrom and the pair deposit, and a tax there would seed the
+        // pool short and trip the slippage guard.
+        token.setExempt(address(router), true);
+
         IERC20(address(token)).forceApprove(address(router), tokensForLp);
 
         try router.addLiquidityETH{value: ethForLp}(
             address(token),
             tokensForLp,
-            (tokensForLp * 9000) / BPS,   // 10% slippage tolerance
+            (tokensForLp * 9000) / BPS,
             (ethForLp * 9000) / BPS,
-            BURN,                    // LP burned on arrival
+            BURN,
             block.timestamp
         ) returns (uint256 amountToken, uint256 amountETH, uint256 liquidity) {
             lpAmount = liquidity;
+            _registerPair();
             emit MigratedToDex(lpToken, amountETH, amountToken, liquidity);
         } catch {
             revert MigrationFailed();
         }
     }
 
+    /// Looks up the freshly created pair and tells the token about it, so the
+    /// token can distinguish buys from sells. Never reverts — a missing pair
+    /// means no post-graduation tax, which is far better than a stuck curve.
+    function _registerPair() private {
+        try router.factory() returns (address f) {
+            try IUniswapV2Factory(f).getPair(address(token), router.WETH())
+                returns (address pair)
+            {
+                if (pair != address(0)) {
+                    lpToken = pair;
+                    token.setDexPair(pair);
+                }
+            } catch {}
+        } catch {}
+    }
 
     function _sendEth(address to, uint256 amount) private {
         if (amount == 0) return;
