@@ -113,4 +113,52 @@ contract FeeSplitterTest is Test {
         assertEq(burned + held, amount, "nothing may vanish");
         assertLe(dividends, held, "dividend pool cannot exceed what's held");
     }
+
+    function test_MarketingSwapPaysEth() public {
+        // The mock needs ETH to pay out with.
+        vm.deal(address(router), 100 ether);
+
+        _fund(10_000e18);
+        splitter.process();
+
+        // 20% of 10,000 = 2,000 tokens, at the mock's 1e-6 rate = 0.002 ETH
+        assertEq(splitter.marketingPool(), 2_000e18);
+
+        uint256 before = marketing.balance;
+        splitter.payMarketing(0);
+
+        assertEq(marketing.balance - before, 2_000e18 / 1e6);
+        assertEq(splitter.marketingPool(), 0, "pool must be drained");
+    }
+
+    function test_RevertWhen_NothingToPay() public {
+        vm.expectRevert(FeeSplitter.NothingAllocated.selector);
+        splitter.payMarketing(0);
+    }
+
+    /// A failing swap must not lose the allocation.
+    function test_FailedSwapRevertsCleanly() public {
+        vm.deal(address(router), 100 ether);
+        _fund(10_000e18);
+        splitter.process();
+
+        router.setShouldFail(true);
+
+        vm.expectRevert();
+        splitter.payMarketing(0);
+
+        // State unchanged — the whole call reverted.
+        assertEq(splitter.marketingPool(), 2_000e18);
+    }
+
+    function test_PayMarketingIsPermissionless() public {
+        vm.deal(address(router), 100 ether);
+        _fund(10_000e18);
+        splitter.process();
+
+        vm.prank(makeAddr("stranger"));
+        splitter.payMarketing(0);
+
+        assertGt(marketing.balance, 0);
+    }
 }

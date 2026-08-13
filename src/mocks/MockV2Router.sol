@@ -50,6 +50,36 @@ contract MockV2Router {
         return (amountTokenDesired, msg.value, liquidity);
     }
 
+    /// Fixed rate for testing: 1 token = 1e-6 ETH.
+    function swapExactTokensForETHSupportingFeeOnTransferTokens(
+        uint256 amountIn,
+        uint256 amountOutMin,
+        address[] calldata path,
+        address to,
+        uint256
+    ) external {
+        require(!shouldFail, "MockRouter: forced failure");
+
+        address tokenIn = path[0];
+        uint256 before  = IERC20(tokenIn).balanceOf(address(this));
+        require(
+            IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn),
+            "TRANSFER_FROM_FAILED"
+        );
+        uint256 received = IERC20(tokenIn).balanceOf(address(this)) - before;
+
+        uint256 ethOut = received / 1e6;
+        require(ethOut >= amountOutMin, "INSUFFICIENT_OUTPUT");
+        require(address(this).balance >= ethOut, "MOCK_NO_ETH");
+
+        (bool ok, ) = to.call{value: ethOut}("");
+        require(ok, "ETH_SEND_FAILED");
+    }
+
+    receive() external payable {}
+
+    
+
     function _sqrt(uint256 y) private pure returns (uint256 z) {
         if (y > 3) {
             z = y;

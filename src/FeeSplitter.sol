@@ -46,6 +46,9 @@ contract FeeSplitter is ReentrancyGuard {
     error SplitMustBeTotal(uint256 given);
     error BelowThreshold(uint256 balance, uint256 needed);
     error ZeroAddress();
+    error NothingAllocated();
+    error SendFailed();
+
 
     constructor(
         MemeToken token_,
@@ -93,6 +96,35 @@ contract FeeSplitter is ReentrancyGuard {
 
         emit Processed(forLiquidity, forBurn, forMarketing, forDividend);
     }
-    
+
+
+    /// Swaps the marketing allocation for ETH and forwards it.
+    /// Permissionless and separate from `process()` so a failing swap
+    /// can never block the split.
+    function payMarketing(uint256 minEthOut) external nonReentrant {
+        uint256 amount = marketingPool;
+        if (amount == 0) revert NothingAllocated();
+
+        marketingPool = 0;
+
+        IERC20(address(token)).forceApprove(address(router), amount);
+
+        address[] memory path = new address[](2);
+        path[0] = address(token);
+        path[1] = router.WETH();
+
+        uint256 before = address(this).balance;
+
+        router.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            amount, minEthOut, path, address(this), block.timestamp
+        );
+
+        uint256 ethOut = address(this).balance - before;
+        (bool ok, ) = marketing.call{value: ethOut}("");
+        if (!ok) revert SendFailed();
+
+        emit MarketingPaid(marketing, ethOut);
+    }
+
     receive() external payable {}
 }
