@@ -7,6 +7,11 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {IUniswapV2Router} from "./interfaces/IUniswapV2Router.sol";
 import {MemeToken} from "./MemeToken.sol";
 
+
+interface IDividendVault {
+    function deposit(uint256 amount) external;
+}
+
 /// @notice Holds post-graduation tax and splits it four ways.
 ///         Swaps are pull-based: anyone can trigger `process()` once the
 ///         balance clears the threshold. Nothing runs inside a transfer.
@@ -30,6 +35,9 @@ contract FeeSplitter is ReentrancyGuard {
 
     /// Accumulated for dividends, held until the dividend module claims it.
     /// Earmarked but not yet actioned. Excluded from future splits.
+    /// Set once by the curve after the vault is deployed.
+    address public dividendVault;
+    address public immutable deployer;
     uint256 public dividendPool;
     uint256 public liquidityPool;
     uint256 public marketingPool;
@@ -43,13 +51,16 @@ contract FeeSplitter is ReentrancyGuard {
     event Processed(uint256 liquidity, uint256 burned, uint256 marketing, uint256 dividends);
     event MarketingPaid(address indexed to, uint256 ethAmount);
     event LiquidityAdded(uint256 tokenAmount, uint256 ethAmount, uint256 liquidity);
-
+    event DividendsPaid(uint256 amount);
 
     error SplitMustBeTotal(uint256 given);
     error BelowThreshold(uint256 balance, uint256 needed);
     error ZeroAddress();
     error NothingAllocated();
     error SendFailed();
+    error NotDeployer();
+    error AlreadySet();
+    error NoVault();
 
 
     constructor(
@@ -74,7 +85,8 @@ contract FeeSplitter is ReentrancyGuard {
         burnBps      = burnBps_;
         marketingBps = marketingBps_;
         dividendBps  = dividendBps_;
-        threshold    = threshold_;
+        deployer     = msg.sender;    
+        threshold    = threshold_;    
     }
 
     /// Splits whatever tax has accumulated. Permissionless — anyone can call
@@ -167,6 +179,28 @@ contract FeeSplitter is ReentrancyGuard {
         );
 
         emit LiquidityAdded(otherHalf, ethOut, liquidity);
+    }
+
+    /// Points dividends at a vault. Callable once, by whoever deployed this.
+    function setDividendVault(address vault) external {
+        if (msg.sender != deployer) revert NotDeployer();
+        if (dividendVault != address(0)) revert AlreadySet();
+        if (vault == address(0)) revert ZeroAddress();
+        dividendVault = vault;
+    }
+
+    /// Forwards the dividend allocation to the vault for holders to claim.
+    function payDividends() external nonReentrant {
+        if (dividendVault == address(0)) revert NoVault();
+        uint256 amount = dividendPool;
+        if (amount == 0) revert NothingAllocated();
+
+        dividendPool = 0;
+
+        IERC20(address(token)).forceApprove(dividendVault, amount);
+        IDividendVault(dividendVault).deposit(amount);
+
+        emit DividendsPaid(amount);
     }
 
     receive() external payable {}

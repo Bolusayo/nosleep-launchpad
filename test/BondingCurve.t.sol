@@ -275,4 +275,24 @@ contract BondingCurveTest is Test {
         assertTrue(curve.graduated());
         assertEq(address(curve.splitter()), address(0), "untaxed tokens need no splitter");
     }
+
+    /// A taxed token gets a dividend vault wired to its splitter at graduation.
+    function test_DividendVaultWiredAtGraduation() public {
+        BondingCurve taxed = new BondingCurve(
+            "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router),
+            300, 1000, 365,
+            makeAddr("marketing"), 4000, 1000, 2000, 3000
+        );
+        MemeToken tt = taxed.token();
+
+        vm.deal(alice, 100 ether);
+        vm.prank(alice);
+        taxed.buy{value: QT * 10}(0);
+
+        address v = address(taxed.dividendVault());
+        assertTrue(v != address(0), "vault must exist");
+        assertEq(taxed.splitter().dividendVault(), v, "splitter must point at it");
+        assertTrue(tt.taxExempt(v), "vault must be exempt so claims aren't taxed");
+    }
+    
 }

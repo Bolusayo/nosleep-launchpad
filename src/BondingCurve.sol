@@ -7,6 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MemeToken} from "./MemeToken.sol";
 import {FeeSplitter} from "./FeeSplitter.sol";
+import {DividendVault} from "./DividendVault.sol";
 import {ReferralNFT} from "./ReferralNFT.sol";
 import {IUniswapV2Router, IUniswapV2Factory} from "./interfaces/IUniswapV2Router.sol";
 /// @notice Constant-product bonding curve with virtual reserves.
@@ -42,6 +43,7 @@ contract BondingCurve is ReentrancyGuard {
     uint256 public lpAmount;
     
     FeeSplitter public splitter;
+    DividendVault public dividendVault;
 
     address public immutable marketing;
     uint16  public immutable liquidityBps;
@@ -310,6 +312,14 @@ contract BondingCurve is ReentrancyGuard {
         ) returns (FeeSplitter s) {
             splitter = s;
             token.setTaxCollector(address(s));
+            address[] memory ex = new address[](2);
+            ex[0] = token.dexPair();
+            ex[1] = BURN;
+
+            DividendVault v = new DividendVault(token, address(s), ex);
+            dividendVault = v;
+            s.setDividendVault(address(v));
+            token.setExempt(address(v), true);
             emit SplitterDeployed(address(s));
         } catch {}
     }
