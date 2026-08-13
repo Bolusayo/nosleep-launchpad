@@ -55,3 +55,10 @@
 - MockV2Router: 0xA13218B5F8099cE7C197C7f451DB77D56f59f093
 - ReferralNFT: 0x4dc3FD897b93A9624EA9B7d696aE24c8f5e5767a
 - LaunchpadFactory: 0x73fB4AA7933CDA3bEa496ee0C5f1a637CB4B68C4
+
+## Tax system — verify before mainnet
+- [ ] `_registerPair` tested only against MockV2Factory. Real Uniswap creates the
+      pair inside addLiquidityETH via CREATE2. Confirm setDexPair-after-migration
+      ordering still avoids taxing the initial pool seed.
+- [ ] Taxed tokens cost ~22% more gas per transfer (the _update override runs
+      even at zero tax). Consider a separate untaxed token contract.
