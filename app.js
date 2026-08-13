@@ -250,6 +250,8 @@ const CURVE_ABI = [
   'function quoteSell(uint256) view returns (uint256)',
   'function buy(uint256) payable',
   'function sell(uint256,uint256)',
+  'function dividendVault() view returns (address)',
+  'function splitter() view returns (address)',
 ];
 
 const TOKEN_ABI = [
@@ -524,6 +526,23 @@ document.addEventListener('DOMContentLoaded', () => {
     sw.addEventListener('click', (e) => {
       e.stopImmediatePropagation();
       sw.classList.toggle('on');
+    }, { capture: true });
+  });
+
+  // Only self-mode dividends are implemented. Mark the rest clearly rather
+  // than letting someone pick ETH and silently receive tokens.
+  document.querySelectorAll('#divAsset .seg-opt').forEach((opt) => {
+    if (opt.dataset.v === 'self') return;
+
+    opt.style.opacity       = '0.35';
+    opt.style.cursor        = 'not-allowed';
+    opt.title               = 'Not yet implemented — dividends pay in the token itself';
+    opt.textContent        += ' · soon';
+
+    opt.addEventListener('click', (e) => {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      notify('Only self-mode dividends are live. ETH, ERC-20 and stock payouts are coming.', 'error');
     }, { capture: true });
   });
 
