@@ -27,6 +27,9 @@ contract MemeToken is ERC20 {
     /// Set once by the curve at graduation so the pair can be marked.
     address public dexPair;
 
+    /// Where tax goes. The curve during the bonding phase, the splitter after.
+    address public taxCollector;
+
     event TaxTaken(address indexed from, address indexed to, uint256 amount, bool isBuy);
     event DexPairSet(address pair);
 
@@ -63,6 +66,7 @@ contract MemeToken is ERC20 {
 
         taxExempt[curve_]       = true;
         taxExempt[address(this)] = true;
+        taxCollector            = curve_;
 
         _mint(curve_, maxSupplyTokens * 10 ** decimals());
     }
@@ -79,6 +83,14 @@ contract MemeToken is ERC20 {
         if (dexPair != address(0)) revert PairAlreadySet();
         dexPair = pair;
         emit DexPairSet(pair);
+    }
+
+    /// Redirects tax to the fee splitter at graduation. Curve-only, once.
+    function setTaxCollector(address collector) external {
+        if (msg.sender != curve) revert NotCurve();
+        if (collector == address(0)) revert ZeroAddress();
+        taxCollector = collector;
+        taxExempt[collector] = true;
     }
 
     /// Marks the router exempt. Curve-only, callable before graduation.
@@ -113,7 +125,7 @@ contract MemeToken is ERC20 {
         uint256 fee  = (value * rate) / BPS;
 
         if (fee > 0) {
-            super._update(from, curve, fee);  // tax accrues to the curve
+            super._update(from, taxCollector, fee);
             emit TaxTaken(from, to, fee, isBuy);
         }
 
