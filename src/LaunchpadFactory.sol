@@ -54,9 +54,12 @@ contract LaunchpadFactory is Ownable, ReentrancyGuard {
         string  name;
         string  symbol;
         uint256 maxSupply;
-        uint256 capBps;      // anti-snipe, 0 = disabled
-        address referrer;    // address(0) = none
-        uint256 minTokensOut; // slippage guard on the dev buy
+        uint256 capBps;
+        address referrer;
+        uint256 minTokensOut;
+        uint16  buyTaxBps;
+        uint16  sellTaxBps;
+        uint32  taxDurationDays;
     }
 
     function createToken(LaunchParams calldata p)
@@ -75,7 +78,10 @@ contract LaunchpadFactory is Ownable, ReentrancyGuard {
             msg.sender,
             feeRecipient,
             p.capBps,
-            router
+            router,
+            p.buyTaxBps,
+            p.sellTaxBps,
+            p.taxDurationDays
         );
 
         curveAddr = address(curve);

@@ -24,7 +24,7 @@ contract BondingCurveTest is Test {
 
     function setUp() public {
         router = new MockV2Router();
-        curve  = new BondingCurve("Fault Line", "FAULT", SUPPLY, creator, feeTo, 0, address(router));
+        curve  = new BondingCurve("Fault Line", "FAULT", SUPPLY, creator, feeTo, 0, address(router), 0, 0, 0);
         token  = curve.token();
 
         VQ = curve.VIRTUAL_QUOTE();
@@ -121,7 +121,7 @@ contract BondingCurveTest is Test {
 
     function test_WalletCapEnforced() public {
         BondingCurve capped =
-            new BondingCurve("Capped", "CAP", SUPPLY, creator, feeTo, 200, address(router));
+            new BondingCurve("Capped", "CAP", SUPPLY, creator, feeTo, 200, address(router), 0, 0, 0);
 
         uint256 cap = capped.maxBuyPerWallet();
         assertEq(cap, (capped.curveSupply() * 200) / 10_000);

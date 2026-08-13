@@ -35,7 +35,8 @@ contract LaunchpadFactoryTest is Test {
         nft.grantRole(nft.DEFAULT_ADMIN_ROLE(), address(factory));
         vm.stopPrank();
 
-        QT = new BondingCurve("x", "X", 1_000_000_000, creator, protocol, 0, address(router)).QUOTE_TARGET();
+        QT = new BondingCurve("x", "X", 1_000_000_000, creator, protocol, 0, address(router), 0, 0, 0).QUOTE_TARGET();
+
 
         vm.deal(creator, 100 ether);
         vm.deal(trader,  100 ether);
@@ -53,7 +54,10 @@ contract LaunchpadFactoryTest is Test {
             maxSupply: 1_000_000_000,
             capBps: 200,
             referrer: ref,
-            minTokensOut: 0
+            minTokensOut: 0,
+            buyTaxBps: 0,
+            sellTaxBps: 0,
+            taxDurationDays: 0
         });
     }
 

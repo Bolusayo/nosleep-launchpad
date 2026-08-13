@@ -67,10 +67,16 @@ contract BondingCurve is ReentrancyGuard {
         address creator_,
         address feeRecipient_,
         uint256 capBps,
-        address router_
+        address router_,
+        uint16  buyTaxBps_,
+        uint16  sellTaxBps_,
+        uint32  taxDurationDays_
     ) {
         router = IUniswapV2Router(router_);
-        token   = new MemeToken(name_, symbol_, maxSupplyTokens, address(this), creator_);
+        token   = new MemeToken(
+            name_, symbol_, maxSupplyTokens, address(this), creator_,
+            buyTaxBps_, sellTaxBps_, taxDurationDays_
+        );
         creator = creator_;
         factory = msg.sender;
         feeRecipient = feeRecipient_;

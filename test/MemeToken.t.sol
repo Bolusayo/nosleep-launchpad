@@ -14,7 +14,7 @@ contract MemeTokenTest is Test {
     uint256 internal constant SUPPLY = 1_000_000_000; // 1B, the UI default
 
     function setUp() public {
-        token = new MemeToken("Fault Line", "FAULT", SUPPLY, curve, creator);
+        token = new MemeToken("Fault Line", "FAULT", SUPPLY, curve, creator, 0, 0, 0);
     }
 
     function test_MetadataIsCorrect() public view {
@@ -39,7 +39,7 @@ contract MemeTokenTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(MemeToken.SupplyOutOfRange.selector, 999_999)
         );
-        new MemeToken("Too Small", "SMALL", 999_999, curve, creator);
+        new MemeToken("Too Small", "SMALL", 999_999, curve, creator, 0, 0, 0);
     }
 
     function test_RevertWhen_SupplyTooHigh() public {
@@ -49,12 +49,12 @@ contract MemeTokenTest is Test {
                 1_000_000_000_001
             )
         );
-        new MemeToken("Too Big", "BIG", 1_000_000_000_001, curve, creator);
+        new MemeToken("Too Big", "BIG", 1_000_000_000_001, curve, creator, 0, 0, 0);
     }
 
     function test_RevertWhen_CurveIsZero() public {
         vm.expectRevert(MemeToken.ZeroAddress.selector);
-        new MemeToken("Nil", "NIL", SUPPLY, address(0), creator);
+        new MemeToken("Nil", "NIL", SUPPLY, address(0), creator, 0, 0, 0);
     }
 
     function test_CurveCanTransfer() public {
@@ -68,7 +68,7 @@ contract MemeTokenTest is Test {
     /// Fuzzed: any supply inside the bounds must mint exactly that amount.
     function testFuzz_SupplyWithinBoundsAlwaysMints(uint256 s) public {
         s = bound(s, token.MIN_SUPPLY(), token.MAX_SUPPLY());
-        MemeToken t = new MemeToken("Fuzz", "FZZ", s, curve, creator);
+        MemeToken t = new MemeToken("Fuzz", "FZZ", s, curve, creator, 0, 0, 0);
         assertEq(t.totalSupply(), s * 1e18);
     }
 }
