@@ -62,3 +62,10 @@
       ordering still avoids taxing the initial pool seed.
 - [ ] Taxed tokens cost ~22% more gas per transfer (the _update override runs
       even at zero tax). Consider a separate untaxed token contract.
+
+## Contract size (EIP-170)
+- [ ] CurveDeployer is at 22,905 / 24,576 bytes — only 1,671 spare.
+      Run `forge build --sizes` after any change to BondingCurve, MemeToken,
+      FeeSplitter or DividendVault. When it overflows, split again.
+- [ ] Deployment order now matters: CurveDeployer → LaunchpadFactory →
+      deployer.setFactory(). See script/DeployStack.s.sol.

@@ -117,8 +117,8 @@ async function connect() {
 /* ---------- contracts ---------- */
 
 const ADDR = {
-  factory: '0x722755a6410018Aa877d7E80F928c69150128426',
-  nft:     '0x3FBB91104139DB14b786F607f05E76dB18F5ab12',
+  factory: '0xadD92BF720B9EacE9a9FF5da49503Cdec0E43355',
+  nft:     '0x3B9437BF11fE5D3330242af8ceDf34AdF07ec448',
 };
 
 const FACTORY_ABI = [
