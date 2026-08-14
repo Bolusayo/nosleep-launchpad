@@ -24,7 +24,7 @@ contract BondingCurveTest is Test {
 
     function setUp() public {
         router = new MockV2Router();
-        curve  = new BondingCurve("Fault Line", "FAULT", SUPPLY, creator, feeTo, 0, address(router), 0, 0, 0, address(0), 0, 0, 0, 0);
+        curve  = new BondingCurve("Fault Line", "FAULT", SUPPLY, creator, feeTo, 0, address(router), address(this), 0, 0, 0, address(0), 0, 0, 0, 0);
         token  = curve.token();
 
         VQ = curve.VIRTUAL_QUOTE();
@@ -121,7 +121,7 @@ contract BondingCurveTest is Test {
 
     function test_WalletCapEnforced() public {
         BondingCurve capped =
-            new BondingCurve("Capped", "CAP", SUPPLY, creator, feeTo, 200, address(router), 0, 0, 0, address(0), 0, 0, 0, 0);
+            new BondingCurve("Capped", "CAP", SUPPLY, creator, feeTo, 200, address(router), address(this), 0, 0, 0, address(0), 0, 0, 0, 0);
         uint256 cap = capped.maxBuyPerWallet();
         assertEq(cap, (capped.curveSupply() * 200) / 10_000);
 
@@ -199,7 +199,7 @@ contract BondingCurveTest is Test {
     /// so trades against the pool are taxed afterwards.
     function test_TaxedTokenGraduatesAndRegistersPair() public {
         BondingCurve taxed = new BondingCurve(
-            "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router),
+            "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router), address(this),
             300, 1000, 365,
             makeAddr("marketing"), 4000, 1000, 2000, 3000
         );
@@ -228,7 +228,7 @@ contract BondingCurveTest is Test {
     /// Curve trading on a taxed token must be untaxed — the curve is exempt.
     function test_CurveTradesAreUntaxedOnTaxedToken() public {
         BondingCurve taxed = new BondingCurve(
-            "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router),
+            "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router), address(this),
             300, 1000, 365,
             makeAddr("marketing"), 4000, 1000, 2000, 3000
         );
@@ -249,7 +249,7 @@ contract BondingCurveTest is Test {
 
     function test_SplitterDeployedForTaxedToken() public {
         BondingCurve taxed = new BondingCurve(
-            "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router),
+            "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router), address(this),
             300, 1000, 365,
             makeAddr("marketing"), 4000, 1000, 2000, 3000
         );
@@ -279,7 +279,7 @@ contract BondingCurveTest is Test {
     /// A taxed token gets a dividend vault wired to its splitter at graduation.
     function test_DividendVaultWiredAtGraduation() public {
         BondingCurve taxed = new BondingCurve(
-            "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router),
+            "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router), address(this),
             300, 1000, 365,
             makeAddr("marketing"), 4000, 1000, 2000, 3000
         );

@@ -5,6 +5,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {BondingCurve} from "./BondingCurve.sol";
 import {ReferralNFT} from "./ReferralNFT.sol";
+import {CurveDeployer} from "./CurveDeployer.sol";
 
 /// @notice Entry point for the launchpad. One transaction deploys the token,
 ///         its curve, the referral NFT, and the creator's launch buy.
@@ -13,6 +14,7 @@ contract LaunchpadFactory is Ownable, ReentrancyGuard {
 
     ReferralNFT public immutable referralNFT;
     address     public immutable router;
+    CurveDeployer public immutable curveDeployer;
 
     uint256 public deployFee = 0.002 ether;
     uint16  public referralCommissionBps = 1_000; // 10% of the 2% trade fee
@@ -42,12 +44,17 @@ contract LaunchpadFactory is Ownable, ReentrancyGuard {
     error InsufficientFee(uint256 sent, uint256 required);
     error SendFailed();
 
-    constructor(address owner_, address feeRecipient_, ReferralNFT nft, address router_)
-        Ownable(owner_)
-    {
-        feeRecipient = feeRecipient_;
-        referralNFT  = nft;
-        router       = router_;
+    constructor(
+        address owner_,
+        address feeRecipient_,
+        ReferralNFT nft,
+        address router_,
+        CurveDeployer deployer_
+    ) Ownable(owner_) {
+        feeRecipient  = feeRecipient_;
+        referralNFT   = nft;
+        router        = router_;
+        curveDeployer = deployer_;
     }
 
     struct LaunchParams {
@@ -76,23 +83,24 @@ contract LaunchpadFactory is Ownable, ReentrancyGuard {
         if (msg.value < deployFee) revert InsufficientFee(msg.value, deployFee);
         uint256 devBuy = msg.value - deployFee;
 
-        BondingCurve curve = new BondingCurve(
-            p.name,
-            p.symbol,
-            p.maxSupply,
-            msg.sender,
-            feeRecipient,
-            p.capBps,
-            router,
-            p.buyTaxBps,
-            p.sellTaxBps,
-            p.taxDurationDays,
-            p.marketing,
-            p.liquidityBps,
-            p.burnBps,
-            p.marketingBps,
-            p.dividendBps
-        );
+        BondingCurve curve = curveDeployer.deploy(CurveDeployer.Args({
+            name: p.name,
+            symbol: p.symbol,
+            maxSupply: p.maxSupply,
+            creator: msg.sender,
+            feeRecipient: feeRecipient,
+            capBps: p.capBps,
+            router: router,
+            launchpad: address(this),
+            buyTaxBps: p.buyTaxBps,
+            sellTaxBps: p.sellTaxBps,
+            taxDurationDays: p.taxDurationDays,
+            marketing: p.marketing,
+            liquidityBps: p.liquidityBps,
+            burnBps: p.burnBps,
+            marketingBps: p.marketingBps,
+            dividendBps: p.dividendBps
+        }));
 
         curveAddr = address(curve);
         tokenAddr = address(curve.token());

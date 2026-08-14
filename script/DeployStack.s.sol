@@ -5,6 +5,7 @@ import {Script, console} from "forge-std/Script.sol";
 import {ReferralNFT} from "../src/ReferralNFT.sol";
 import {LaunchpadFactory} from "../src/LaunchpadFactory.sol";
 import {MockV2Router} from "../src/mocks/MockV2Router.sol";
+import {CurveDeployer} from "../src/CurveDeployer.sol";
 
 contract DeployStack is Script {
     function run() external {
@@ -15,7 +16,10 @@ contract DeployStack is Script {
 
         MockV2Router router = new MockV2Router();
         ReferralNFT nft = new ReferralNFT(me);
-        LaunchpadFactory factory = new LaunchpadFactory(me, me, nft, address(router));
+
+        CurveDeployer deployer = new CurveDeployer();
+        LaunchpadFactory factory = new LaunchpadFactory(me, me, nft, address(router), deployer);
+        deployer.setFactory(address(factory));
 
         nft.grantRole(nft.MINTER_ROLE(), address(factory));
 
@@ -24,6 +28,7 @@ contract DeployStack is Script {
         console.log("ReferralNFT:      ", address(nft));
         console.log("LaunchpadFactory: ", address(factory));
         console.log("MockV2Router:     ", address(router));
+        console.log("CurveDeployer:    ", address(deployer));
     }
 }
 

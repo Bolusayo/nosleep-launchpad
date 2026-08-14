@@ -7,6 +7,7 @@ import {ReferralNFT} from "../src/ReferralNFT.sol";
 import {BondingCurve} from "../src/BondingCurve.sol";
 import {MemeToken} from "../src/MemeToken.sol";
 import {MockV2Router} from "../src/mocks/MockV2Router.sol";
+import {CurveDeployer} from "../src/CurveDeployer.sol";
 
 contract LaunchpadFactoryTest is Test {
     LaunchpadFactory internal factory;
@@ -27,16 +28,16 @@ contract LaunchpadFactoryTest is Test {
 
         vm.startPrank(admin);
         nft     = new ReferralNFT(admin);
-        factory = new LaunchpadFactory(admin, protocol, nft, address(router));
-        
+        CurveDeployer deployer = new CurveDeployer();
+        factory = new LaunchpadFactory(admin, protocol, nft, address(router), deployer);
+        deployer.setFactory(address(factory));
         
         // The factory mints NFTs and grants each curve the right to credit them.
         nft.grantRole(nft.MINTER_ROLE(), address(factory));
         nft.grantRole(nft.DEFAULT_ADMIN_ROLE(), address(factory));
         vm.stopPrank();
 
-        QT = new BondingCurve("x", "X", 1_000_000_000, creator, protocol, 0, address(router), 0, 0, 0, address(0), 0, 0, 0, 0).QUOTE_TARGET();
-
+        QT = new BondingCurve("x", "X", 1_000_000_000, creator, protocol, 0, address(router), address(this), 0, 0, 0, address(0), 0, 0, 0, 0).QUOTE_TARGET();
         vm.deal(creator, 100 ether);
         vm.deal(trader,  100 ether);
     }

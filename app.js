@@ -488,6 +488,49 @@ async function doSell(t, tokenAmount) {
 }
 
 
+/* ---------- dividends ---------- */
+
+const VAULT_ABI = [
+  'function pending(address) view returns (uint256)',
+  'function claim()',
+  'function accPerToken() view returns (uint256)',
+  'function totalDeposited() view returns (uint256)',
+];
+
+async function vaultFor(curveAddr) {
+  const c = new ethers.Contract(curveAddr, CURVE_ABI, readProvider());
+  const v = await c.dividendVault();
+  return v === ethers.ZeroAddress ? null : v;
+}
+
+async function pendingDividends(curveAddr) {
+  if (!state.address) return 0n;
+  const v = await vaultFor(curveAddr);
+  if (!v) return 0n;
+  const vault = new ethers.Contract(v, VAULT_ABI, readProvider());
+  return await vault.pending(state.address);
+}
+
+async function claimDividends(t) {
+  if (!state.signer) { await connect(); if (!state.signer) return; }
+
+  const v = await vaultFor(t.curveAddr);
+  if (!v) { notify('This token has no dividend vault', 'error'); return; }
+
+  const vault = new ethers.Contract(v, VAULT_ABI, state.signer);
+  const amount = await vault.pending(state.address);
+  if (amount === 0n) { notify('Nothing to claim yet'); return; }
+
+  await vault.claim.staticCall({ from: state.address });
+
+  notify(`Claiming ${Number(ethers.formatUnits(amount, 18)).toLocaleString()} ${t.symbol}`);
+  const tx = await vault.claim();
+  await tx.wait();
+
+  notify(`Claimed ${t.symbol} dividends`, 'success');
+  await refreshExplore();
+}
+
 
 /* ---------- wiring ---------- */
 
