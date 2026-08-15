@@ -357,7 +357,9 @@ function renderLive() {
         <button class="trade-go"
           style="padding:10px 14px; background:var(--gold); color:#0a0c0a; border:none; cursor:pointer; font-family:'JetBrains Mono',monospace; font-weight:600; font-size:12.5px;">Buy ${t.symbol}</button>
       </div>
-      <div class="mono" style="font-size:11px; color:var(--text-faint); margin-top:8px;">${short(t.tokenAddr)}</div>
+      <div class="mono" style="font-size:11px; color:var(--text-faint); margin-top:8px;">${short(t.tokenAddr)}
+      </div>
+      <div class="div-slot"></div>
     `;
 
     let side = 'buy';
@@ -399,6 +401,39 @@ function renderLive() {
         goBtn.textContent = label;
       }
     });
+
+
+    // Graduated tokens may have claimable dividends. Checked lazily so an
+    // absent vault never blocks the card from rendering.
+    if (t.graduated && state.address) {
+      pendingDividends(t.curveAddr).then((amt) => {
+        if (amt === 0n) return;
+
+        const slot = card.querySelector('.div-slot');
+        const btn2 = document.createElement('button');
+        btn2.textContent = `Claim ${Number(ethers.formatUnits(amt, 18)).toLocaleString(undefined, {maximumFractionDigits: 2})} ${t.symbol}`;
+        btn2.style.cssText = `
+          width:100%; margin-top:10px; padding:10px;
+          background:rgba(201,162,39,.15); color:var(--gold);
+          border:1px solid var(--gold); cursor:pointer;
+          font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600;
+        `;
+        btn2.addEventListener('click', async () => {
+          btn2.disabled = true;
+          const label = btn2.textContent;
+          btn2.textContent = 'Claiming…';
+          try {
+            await claimDividends(t);
+          } catch (err) {
+            console.error(err);
+            notify(err.shortMessage || 'Claim failed', 'error');
+            btn2.textContent = label;
+            btn2.disabled = false;
+          }
+        });
+        slot.appendChild(btn2);
+      }).catch(() => { /* no vault on this token */ });
+    }
 
     grid.appendChild(card);
   }
