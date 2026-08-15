@@ -33,6 +33,11 @@ contract FeeSplitter is ReentrancyGuard {
     /// Minimum token balance before `process()` will do anything.
     uint256 public immutable threshold;
 
+    enum BurnMode { Threshold, Weekly, Monthly }
+
+    BurnMode public immutable burnMode;
+    uint64  public lastBurnAt;
+
     /// Accumulated for dividends, held until the dividend module claims it.
     /// Earmarked but not yet actioned. Excluded from future splits.
     /// Set once by the curve after the vault is deployed.
@@ -41,10 +46,19 @@ contract FeeSplitter is ReentrancyGuard {
     uint256 public dividendPool;
     uint256 public liquidityPool;
     uint256 public marketingPool;
+    uint256 public pendingBurn;
 
     /// Total already allocated — the amount `process()` must ignore.
     function allocated() public view returns (uint256) {
-        return dividendPool + liquidityPool + marketingPool;
+        return dividendPool + liquidityPool + marketingPool + pendingBurn;
+    }
+
+    /// Whether the burn tranche is due. Threshold mode always burns on
+    /// process(); weekly and monthly gate on elapsed time.
+    function burnDue() public view returns (bool) {
+        if (burnMode == BurnMode.Threshold) return true;
+        uint256 interval = burnMode == BurnMode.Weekly ? 7 days : 30 days;
+        return block.timestamp >= lastBurnAt + interval;
     }
 
 
@@ -61,6 +75,7 @@ contract FeeSplitter is ReentrancyGuard {
     error NotDeployer();
     error AlreadySet();
     error NoVault();
+    error BurnNotDue();
 
 
     constructor(
@@ -71,7 +86,8 @@ contract FeeSplitter is ReentrancyGuard {
         uint16 burnBps_,
         uint16 marketingBps_,
         uint16 dividendBps_,
-        uint256 threshold_
+        uint256 threshold_,
+        BurnMode burnMode_
     ) {
         if (marketing_ == address(0)) revert ZeroAddress();
 
@@ -86,7 +102,9 @@ contract FeeSplitter is ReentrancyGuard {
         marketingBps = marketingBps_;
         dividendBps  = dividendBps_;
         deployer     = msg.sender;    
-        threshold    = threshold_;    
+        threshold    = threshold_; 
+        burnMode   = burnMode_;
+        lastBurnAt = uint64(block.timestamp);
     }
 
     /// Splits whatever tax has accumulated. Permissionless — anyone can call
@@ -101,7 +119,13 @@ contract FeeSplitter is ReentrancyGuard {
         uint256 forDividend  = bal - forLiquidity - forBurn - forMarketing;
 
         if (forBurn > 0) {
-            IERC20(address(token)).safeTransfer(BURN, forBurn);
+            if (burnDue()) {
+                lastBurnAt = uint64(block.timestamp);
+                IERC20(address(token)).safeTransfer(BURN, forBurn);
+            } else {
+                // Not due yet — hold it for the next window.
+                pendingBurn += forBurn;
+            }
         }
 
         dividendPool  += forDividend;
@@ -201,6 +225,18 @@ contract FeeSplitter is ReentrancyGuard {
         IDividendVault(dividendVault).deposit(amount);
 
         emit DividendsPaid(amount);
+    }
+
+    /// Burns anything held back while waiting for the burn window.
+    function executeBurn() external nonReentrant {
+        if (!burnDue()) revert BurnNotDue();
+        uint256 amount = pendingBurn;
+        if (amount == 0) revert NothingAllocated();
+
+        pendingBurn = 0;
+        lastBurnAt  = uint64(block.timestamp);
+
+        IERC20(address(token)).safeTransfer(BURN, amount);
     }
 
     receive() external payable {}

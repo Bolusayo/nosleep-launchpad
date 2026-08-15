@@ -309,7 +309,8 @@ contract BondingCurve is ReentrancyGuard {
         try new FeeSplitter(
             token, router, marketing,
             liquidityBps, burnBps, marketingBps, dividendBps,
-            curveSupply / 10_000        // threshold: 0.01% of curve supply
+            curveSupply / 10_000,        // threshold: 0.01% of curve supply
+            FeeSplitter.BurnMode.Threshold
         ) returns (FeeSplitter s) {
             splitter = s;
             token.setTaxCollector(address(s));

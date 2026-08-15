@@ -29,7 +29,7 @@ contract FeeSplitterTest is Test {
             IUniswapV2Router(address(router)),
             marketing,
             4000, 1000, 2000, 3000,
-            THRESHOLD
+           THRESHOLD, FeeSplitter.BurnMode.Threshold
         );
     }
 
@@ -42,7 +42,7 @@ contract FeeSplitterTest is Test {
         vm.expectRevert(abi.encodeWithSelector(FeeSplitter.SplitMustBeTotal.selector, uint256(9000)));
         new FeeSplitter(
             token, IUniswapV2Router(address(router)), marketing,
-            4000, 1000, 2000, 2000, THRESHOLD
+            4000, 1000, 2000, 2000, THRESHOLD, FeeSplitter.BurnMode.Threshold
         );
     }
 
@@ -50,7 +50,7 @@ contract FeeSplitterTest is Test {
         vm.expectRevert(FeeSplitter.ZeroAddress.selector);
         new FeeSplitter(
             token, IUniswapV2Router(address(router)), address(0),
-            4000, 1000, 2000, 3000, THRESHOLD
+            4000, 1000, 2000, 3000, THRESHOLD, FeeSplitter.BurnMode.Threshold
         );
     }
 
@@ -217,5 +217,46 @@ contract FeeSplitterTest is Test {
 
         // Burned 10%, dividends held, the rest swapped or paired away.
         assertEq(token.balanceOf(splitter.BURN()), 1_000e18);
+    }
+
+    function test_WeeklyModeHoldsBurnUntilDue() public {
+        FeeSplitter weekly = new FeeSplitter(
+            token, IUniswapV2Router(address(router)), marketing,
+            4000, 1000, 2000, 3000, THRESHOLD, FeeSplitter.BurnMode.Weekly
+        );
+
+        assertFalse(weekly.burnDue(), "first window has not elapsed");
+
+        vm.prank(curve);
+        token.transfer(address(weekly), 10_000e18);
+        weekly.process();
+
+        assertEq(weekly.pendingBurn(), 1_000e18, "held for the next window");
+        assertEq(token.balanceOf(weekly.BURN()), 0, "nothing burned yet");
+    }
+
+    function test_WeeklyBurnReleasesAfterInterval() public {
+        FeeSplitter weekly = new FeeSplitter(
+            token, IUniswapV2Router(address(router)), marketing,
+            4000, 1000, 2000, 3000, THRESHOLD, FeeSplitter.BurnMode.Weekly
+        );
+
+        vm.prank(curve);
+        token.transfer(address(weekly), 10_000e18);
+        weekly.process();                       // consumes the first window
+
+        vm.prank(curve);
+        token.transfer(address(weekly), 10_000e18);
+        weekly.process();                       // held
+
+        vm.expectRevert(FeeSplitter.BurnNotDue.selector);
+        weekly.executeBurn();
+
+        vm.warp(block.timestamp + 8 days);
+        assertTrue(weekly.burnDue());
+
+        weekly.executeBurn();
+        assertEq(weekly.pendingBurn(), 0);
+        assertEq(token.balanceOf(weekly.BURN()), 2_000e18);
     }
 }
