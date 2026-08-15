@@ -30,6 +30,8 @@ contract MemeToken is ERC20 {
     /// Where tax goes. The curve during the bonding phase, the splitter after.
     address public taxCollector;
 
+    
+
     event TaxTaken(address indexed from, address indexed to, uint256 amount, bool isBuy);
     event DexPairSet(address pair);
 

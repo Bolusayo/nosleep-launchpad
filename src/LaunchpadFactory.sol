@@ -31,6 +31,11 @@ contract LaunchpadFactory is Ownable, ReentrancyGuard {
     Launch[] public launches;
     mapping(address => uint256) public launchIdByToken;
 
+    /// token => off-chain metadata URI (IPFS hash, https URL, or data URI).
+    /// Set once at launch by the creator. Empty means none was provided.
+    mapping(address => string) public metadataURI;
+
+
     event TokenLaunched(
         address indexed creator,
         address indexed token,
@@ -72,6 +77,7 @@ contract LaunchpadFactory is Ownable, ReentrancyGuard {
         uint16  burnBps;
         uint16  marketingBps;
         uint16  dividendBps;
+        string  metadata;
     }
 
     function createToken(LaunchParams calldata p)
@@ -129,6 +135,10 @@ contract LaunchpadFactory is Ownable, ReentrancyGuard {
             createdAt: uint64(block.timestamp)
         }));
         launchIdByToken[tokenAddr] = launches.length - 1;
+
+        if (bytes(p.metadata).length > 0) {
+            metadataURI[tokenAddr] = p.metadata;
+        }
 
         _send(feeRecipient, deployFee);
 

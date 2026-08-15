@@ -62,7 +62,8 @@ contract LaunchpadFactoryTest is Test {
             liquidityBps: 0,
             burnBps: 0,
             marketingBps: 0,
-            dividendBps: 0
+            dividendBps: 0,
+            metadata: ""
         });
     }
 
