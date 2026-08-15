@@ -77,3 +77,8 @@
       Weekly/Monthly work in the contract but aren't reachable from the form.
 - [ ] CurveDeployer at 23,586/24,576 — 990 bytes spare. Check sizes before
       every contract change.
+
+## Testing discipline
+- [ ] Tests must grant exactly the roles DeployStack grants, never more.
+      A DEFAULT_ADMIN_ROLE grant in LaunchpadFactory.t.sol hid a production
+      failure through 95 green tests. Audit setUp() against the deploy script.

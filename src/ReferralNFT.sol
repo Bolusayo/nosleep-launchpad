@@ -49,6 +49,7 @@ contract ReferralNFT is ERC721, AccessControl, ReentrancyGuard {
 
     constructor(address admin) ERC721("No Sleep Referral", "NSREF") {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _setRoleAdmin(CREDITOR_ROLE, MINTER_ROLE);
     }
 
     function mintReferral(
