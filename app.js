@@ -120,8 +120,8 @@ async function connect() {
 
 const TARGET_ETH = '0.004';   // TESTNET — restore to '4' before mainnet
 const ADDR = {
-  factory: '0xadD92BF720B9EacE9a9FF5da49503Cdec0E43355',
-  nft:     '0x3B9437BF11fE5D3330242af8ceDf34AdF07ec448',
+  factory: '0x29443615ff549bc2AF60e3B5d670fE6F7630Cb02',
+  nft:     '0x0D88EC6D54F994514ceB97F6e675090AE9643392',
 };
 
 const FACTORY_ABI = [
