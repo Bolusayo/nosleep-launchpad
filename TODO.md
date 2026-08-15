@@ -82,3 +82,9 @@
 - [ ] Tests must grant exactly the roles DeployStack grants, never more.
       A DEFAULT_ADMIN_ROLE grant in LaunchpadFactory.t.sol hid a production
       failure through 95 green tests. Audit setUp() against the deploy script.
+
+## Current testnet deployment (supersedes all earlier)
+- MockV2Router: 0x968181dFf370182E05d295bb33Eb455b5389775A
+- CurveDeployer: 0x8988D503412149100A69469c32d0549f65d215C1
+- ReferralNFT: 0x0D88EC6D54F994514ceB97F6e675090AE9643392
+- LaunchpadFactory: 0x29443615ff549bc2AF60e3B5d670fE6F7630Cb02
