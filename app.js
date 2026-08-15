@@ -105,6 +105,8 @@ async function connect() {
     setConnectLabel(short(state.address));
     console.log('Connected:', state.address);
 
+    renderReferrals();
+
     const bal = await state.provider.getBalance(state.address);
     console.log('Balance:', ethers.formatEther(bal), 'ETH');
   } catch (err) {
@@ -570,6 +572,132 @@ async function claimDividends(t) {
   await refreshExplore();
 }
 
+/* ---------- referral dashboard ---------- */
+
+const NFT_ABI = [
+  'function nextId() view returns (uint256)',
+  'function ownerOf(uint256) view returns (address)',
+  'function pending(uint256) view returns (uint256)',
+  'function claimable(address) view returns (uint256)',
+  'function referrals(uint256) view returns (address token, address curve, string name, string ticker, uint64 launchDate, uint64 migrationDate, uint32 genesisNumber, uint16 commissionBps, uint8 status, uint256 lifetimeCommissions)',
+  'function claim(uint256)',
+  'function claimSettled()',
+];
+
+function nftContract(runner) {
+  return new ethers.Contract(ADDR.nft, NFT_ABI, runner);
+}
+
+/// Walks every minted NFT and keeps the ones this wallet owns.
+/// Fine at testnet scale; swap for event indexing once volume grows.
+async function myReferrals() {
+  if (!state.address) return [];
+
+  const nft   = nftContract(readProvider());
+  const total = Number(await nft.nextId());
+  const mine  = [];
+
+  for (let id = 1; id < total; id++) {
+    let owner;
+    try { owner = await nft.ownerOf(id); } catch { continue; }
+    if (owner.toLowerCase() !== state.address.toLowerCase()) continue;
+
+    const r = await nft.referrals(id);
+    mine.push({
+      id,
+      token: r.token,
+      curve: r.curve,
+      name: r.name,
+      ticker: r.ticker,
+      launchDate: Number(r.launchDate),
+      status: Number(r.status),      // 0 curve, 1 migrated, 2 genesis
+      genesisNumber: Number(r.genesisNumber),
+      lifetime: r.lifetimeCommissions,
+      pending: await nft.pending(id),
+    });
+  }
+  return mine;
+}
+
+function statusLabel(s, g) {
+  if (s === 2) return `Genesis #${String(g).padStart(3, '0')}`;
+  if (s === 1) return 'Migrated';
+  return 'On curve';
+}
+
+async function renderReferrals() {
+  const body = document.getElementById('refTableBody');
+  if (!body) return;
+
+  if (!state.address) {
+    document.getElementById('refCountStat').textContent  = '0';
+    document.getElementById('refActiveStat').textContent = '0';
+    document.getElementById('refEarnedStat').textContent = '0 ETH';
+    document.getElementById('refClaimStat').textContent  = '0 ETH';
+    body.innerHTML = `<tr><td colspan="6" style="padding:20px; color:var(--text-faint); font-family:'JetBrains Mono',monospace; font-size:12px;">Connect a wallet to see your referrals.</td></tr>`;
+    return;
+  }
+
+  const rows = await myReferrals();
+  const nft  = nftContract(readProvider());
+  const settled = await nft.claimable(state.address);
+
+  let lifetime = 0n, claimable = settled, active = 0;
+  for (const r of rows) {
+    lifetime  += r.lifetime;
+    claimable += r.pending;
+    if (r.status === 0) active += 1;
+  }
+
+  document.getElementById('refCountStat').textContent  = rows.length;
+  document.getElementById('refActiveStat').textContent = active;
+  document.getElementById('refEarnedStat').textContent = `${Number(ethers.formatEther(lifetime)).toFixed(6)} ETH`;
+  document.getElementById('refClaimStat').textContent  = `${Number(ethers.formatEther(claimable)).toFixed(6)} ETH`;
+
+  const link = document.getElementById('refLinkInput');
+  if (link) link.value = state.address;
+
+  if (rows.length === 0) {
+    body.innerHTML = `<tr><td colspan="6" style="padding:20px; color:var(--text-faint); font-family:'JetBrains Mono',monospace; font-size:12px;">No referrals yet. Share your address as the referrer when someone launches.</td></tr>`;
+    return;
+  }
+
+  body.innerHTML = '';
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="padding:12px 8px;">${r.name} <span class="mono" style="color:var(--text-dim);">$${r.ticker}</span></td>
+      <td class="mono" style="padding:12px 8px; font-size:11px; color:var(--text-dim);">${short(r.token)}</td>
+      <td class="mono" style="padding:12px 8px; font-size:12px;">${ageLabel(r.launchDate)}</td>
+      <td class="mono" style="padding:12px 8px; font-size:12px; color:var(--gold);">${statusLabel(r.status, r.genesisNumber)}</td>
+      <td class="mono" style="padding:12px 8px; font-size:12px;">${Number(ethers.formatEther(r.lifetime)).toFixed(6)} ETH</td>
+      <td style="padding:12px 8px;"></td>
+    `;
+
+    if (r.pending > 0n) {
+      const btn = document.createElement('button');
+      btn.textContent = `Claim ${Number(ethers.formatEther(r.pending)).toFixed(6)}`;
+      btn.style.cssText = `padding:6px 10px; background:var(--gold); color:#0a0c0a; border:none; cursor:pointer; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600;`;
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.textContent = 'Claiming…';
+        try {
+          const w = nftContract(state.signer);
+          await (await w.claim(r.id)).wait();
+          notify(`Claimed referral #${r.id}`, 'success');
+          await renderReferrals();
+        } catch (err) {
+          console.error(err);
+          notify(err.shortMessage || 'Claim failed', 'error');
+          btn.disabled = false;
+        }
+      });
+      tr.lastElementChild.appendChild(btn);
+    }
+
+    body.appendChild(tr);
+  }
+}
 
 /* ---------- wiring ---------- */
 
@@ -629,6 +757,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   refreshExplore();
+  renderReferrals();
 
   console.log('NO SLEEP app.js loaded');
 });

@@ -69,3 +69,11 @@
       FeeSplitter or DividendVault. When it overflows, split again.
 - [ ] Deployment order now matters: CurveDeployer → LaunchpadFactory →
       deployer.setFactory(). See script/DeployStack.s.sol.
+
+## Stage 2 complete
+- [x] Tax, four-way split, marketing swap, liquidity top-up, burn scheduler
+- [x] Self-mode dividends, vault wired at graduation
+- [ ] Burn mode is hardcoded to Threshold in BondingCurve._deploySplitter.
+      Weekly/Monthly work in the contract but aren't reachable from the form.
+- [ ] CurveDeployer at 23,586/24,576 — 990 bytes spare. Check sizes before
+      every contract change.
