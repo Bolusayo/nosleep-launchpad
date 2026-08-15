@@ -116,6 +116,7 @@ async function connect() {
 
 /* ---------- contracts ---------- */
 
+const TARGET_ETH = '0.004';   // TESTNET — restore to '4' before mainnet
 const ADDR = {
   factory: '0xadD92BF720B9EacE9a9FF5da49503Cdec0E43355',
   nft:     '0x3B9437BF11fE5D3330242af8ceDf34AdF07ec448',
@@ -344,24 +345,26 @@ function renderLive() {
         <div class="tc-badge">${t.graduated ? 'Graduated' : 'Curve'}</div>
       </div>
       <div class="mono" style="font-size:12px; color:var(--text-dim); margin:10px 0;">
-        ${Number(ethers.formatEther(t.collected)).toFixed(6)} / 4 ETH · ${t.age}
+        ${Number(ethers.formatEther(t.collected)).toFixed(6)} / ${TARGET_ETH} ETH · ${t.age}
       </div>
       <div class="snipe-bar"><div class="fill" style="width:${t.progress}%; background:var(--gold);"></div></div>
+      ${t.graduated ? `
+      <div class="mono" style="margin-top:14px; padding:10px; text-align:center; background:rgba(62,240,140,.08); border:1px solid var(--line-soft); color:var(--gold); font-size:12px;">Trading on Uniswap · curve closed</div>
+      ` : `
       <div class="tc-actions" style="display:flex; gap:0; margin-top:14px;">
         <button class="side-btn buy active" style="flex:1; padding:9px; background:rgba(62,240,140,.12); color:var(--gold); border:1px solid var(--line-soft); cursor:pointer; font-family:inherit;">Buy</button>
         <button class="side-btn sell" style="flex:1; padding:9px; background:transparent; color:var(--text-dim); border:1px solid var(--line-soft); cursor:pointer; font-family:inherit;">Sell</button>
       </div>
       <div style="display:flex; gap:8px; margin-top:10px;">
-        <input class="trade-amt" placeholder="0.0 ETH"
-          style="flex:1; padding:10px; background:var(--panel-2); border:1px solid var(--line-soft); color:var(--text); font-family:'JetBrains Mono',monospace; font-size:12.5px;">
-        <button class="trade-go"
-          style="padding:10px 14px; background:var(--gold); color:#0a0c0a; border:none; cursor:pointer; font-family:'JetBrains Mono',monospace; font-weight:600; font-size:12.5px;">Buy ${t.symbol}</button>
+        <input class="trade-amt" placeholder="0.0 ETH" style="flex:1; padding:10px; background:var(--panel-2); border:1px solid var(--line-soft); color:var(--text); font-family:'JetBrains Mono',monospace; font-size:12.5px;">
+        <button class="trade-go" style="padding:10px 14px; background:var(--gold); color:#0a0c0a; border:none; cursor:pointer; font-family:'JetBrains Mono',monospace; font-weight:600; font-size:12.5px;">Buy ${t.symbol}</button>
       </div>
+      `}
       <div class="mono" style="font-size:11px; color:var(--text-faint); margin-top:8px;">${short(t.tokenAddr)}
       </div>
       <div class="div-slot"></div>
     `;
-
+    if (!t.graduated) {
     let side = 'buy';
     const buyBtn  = card.querySelector('.side-btn.buy');
     const sellBtn = card.querySelector('.side-btn.sell');
@@ -401,6 +404,7 @@ function renderLive() {
         goBtn.textContent = label;
       }
     });
+    }
 
 
     // Graduated tokens may have claimable dividends. Checked lazily so an
@@ -434,7 +438,7 @@ function renderLive() {
         slot.appendChild(btn2);
       }).catch(() => { /* no vault on this token */ });
     }
-
+   
     grid.appendChild(card);
   }
 }
