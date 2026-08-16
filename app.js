@@ -21,6 +21,21 @@ const state = {
 
 const short = (a) => a.slice(0, 6) + '…' + a.slice(-4);
 
+// Escapes user-controlled strings (token name/symbol/description, etc.)
+// before they're interpolated into innerHTML. Anyone can deploy a token
+// via LaunchpadFactory with arbitrary name/symbol/description, so these
+// values must never be trusted as raw HTML.
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[c]));
+}
+
 function setConnectLabel(text) {
   document.querySelectorAll('.connect-btn').forEach((b) => {
     b.textContent = text;
@@ -352,15 +367,15 @@ function renderLive() {
       <div class="tc-head">
         <div class="tc-icon">◆</div>
         <div class="tc-id">
-          <div class="tc-name">${t.name}</div>
-          <div class="tc-ticker mono">${t.symbol}</div>
+          <div class="tc-name">${escapeHtml(t.name)}</div>
+          <div class="tc-ticker mono">${escapeHtml(t.symbol)}</div>
         </div>
         <div class="tc-badge">${t.graduated ? 'Graduated' : 'Curve'}</div>
       </div>
       <div class="mono" style="font-size:12px; color:var(--text-dim); margin:10px 0;">
         ${Number(ethers.formatEther(t.collected)).toFixed(6)} / ${TARGET_ETH} ETH · ${t.age}
       </div>
-      ${t.description ? `<div style="font-size:12px; color:var(--text-dim); margin:8px 0; line-height:1.5;">${t.description.slice(0, 140)}</div>` : ''}
+       ${t.description ? `<div style="font-size:12px; color:var(--text-dim); margin:8px 0; line-height:1.5;">${escapeHtml(t.description.slice(0, 140))}</div>` : ''}
       <div class="snipe-bar"><div class="fill" style="width:${t.progress}%; background:var(--gold);"></div></div>
       ${t.graduated ? `
       <div class="mono" style="margin-top:14px; padding:10px; text-align:center; background:rgba(62,240,140,.08); border:1px solid var(--line-soft); color:var(--gold); font-size:12px;">Trading on Uniswap · curve closed</div>
@@ -371,7 +386,7 @@ function renderLive() {
       </div>
       <div style="display:flex; gap:8px; margin-top:10px;">
         <input class="trade-amt" placeholder="0.0 ETH" style="flex:1; padding:10px; background:var(--panel-2); border:1px solid var(--line-soft); color:var(--text); font-family:'JetBrains Mono',monospace; font-size:12.5px;">
-        <button class="trade-go" style="padding:10px 14px; background:var(--gold); color:#0a0c0a; border:none; cursor:pointer; font-family:'JetBrains Mono',monospace; font-weight:600; font-size:12.5px;">Buy ${t.symbol}</button>
+        <button class="trade-go" style="padding:10px 14px; background:var(--gold); color:#0a0c0a; border:none; cursor:pointer; font-family:'JetBrains Mono',monospace; font-weight:600; font-size:12.5px;">Buy ${escapeHtml(t.symbol)}</button>
       </div>
       `}
       <div class="mono" style="font-size:11px; color:var(--text-faint); margin-top:8px;">${short(t.tokenAddr)}
@@ -678,7 +693,7 @@ async function renderReferrals() {
   for (const r of rows) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td style="padding:12px 8px;">${r.name} <span class="mono" style="color:var(--text-dim);">$${r.ticker}</span></td>
+      <td style="padding:12px 8px;">${escapeHtml(r.name)} <span class="mono" style="color:var(--text-dim);">$${escapeHtml(r.ticker)}</span></td>
       <td class="mono" style="padding:12px 8px; font-size:11px; color:var(--text-dim);">${short(r.token)}</td>
       <td class="mono" style="padding:12px 8px; font-size:12px;">${ageLabel(r.launchDate)}</td>
       <td class="mono" style="padding:12px 8px; font-size:12px; color:var(--gold);">${statusLabel(r.status, r.genesisNumber)}</td>
