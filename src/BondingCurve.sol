@@ -10,24 +10,24 @@ import {FeeSplitter} from "./FeeSplitter.sol";
 import {DividendVault} from "./DividendVault.sol";
 import {ReferralNFT} from "./ReferralNFT.sol";
 import {IUniswapV2Router, IUniswapV2Factory} from "./interfaces/IUniswapV2Router.sol";
+
 /// @notice Constant-product bonding curve with virtual reserves.
 ///         Deploys its own token and holds 100% of the supply:
 ///         80% sells on the curve, 20% seeds the DEX pool at graduation.
 contract BondingCurve is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    uint256 public constant BPS             = 10_000;
-    uint256 public constant VIRTUAL_QUOTE   = 0.003 ether;
-    uint256 public constant QUOTE_TARGET    = 0.004 ether;
+    uint256 public constant BPS = 10_000;
+    uint256 public constant VIRTUAL_QUOTE = 3 ether;
+    uint256 public constant QUOTE_TARGET = 4 ether;
     uint256 public constant CURVE_SHARE_BPS = 8_000; // 80%
-    uint256 public constant FEE_BPS         = 200;   // 2% trading fee
+    uint256 public constant FEE_BPS = 200; // 2% trading fee
     address public constant BURN = 0x000000000000000000000000000000000000dEaD;
 
-
     MemeToken public immutable token;
-    address   public immutable creator;
-    address   public immutable factory;
-    address   public immutable feeRecipient;
+    address public immutable creator;
+    address public immutable factory;
+    address public immutable feeRecipient;
 
     /// Tokens available on the curve (80% of supply), in wei.
     uint256 public immutable curveSupply;
@@ -36,25 +36,25 @@ contract BondingCurve is ReentrancyGuard {
 
     uint256 public quoteReserve; // virtual + real ETH
     uint256 public tokenReserve; // virtual token reserve
-    bool    public graduated;
+    bool public graduated;
 
     IUniswapV2Router public immutable router;
     address public lpToken;
     uint256 public lpAmount;
-    
+
     FeeSplitter public splitter;
     DividendVault public dividendVault;
 
     address public immutable marketing;
-    uint16  public immutable liquidityBps;
-    uint16  public immutable burnBps;
-    uint16  public immutable marketingBps;
-    uint16  public immutable dividendBps;
+    uint16 public immutable liquidityBps;
+    uint16 public immutable burnBps;
+    uint16 public immutable marketingBps;
+    uint16 public immutable dividendBps;
 
     /// Referral NFT that earns a cut of this token's fees. Set once by the factory.
     ReferralNFT public referralNFT;
-    uint256     public referralId;
-    uint16      public referralBps;
+    uint256 public referralId;
+    uint16 public referralBps;
 
     /// Cumulative tokens bought per wallet — never decreases.
     mapping(address => uint256) public purchased;
@@ -80,29 +80,27 @@ contract BondingCurve is ReentrancyGuard {
         uint256 capBps,
         address router_,
         address factory_,
-        uint16  buyTaxBps_,
-        uint16  sellTaxBps_,
-        uint32  taxDurationDays_,
+        uint16 buyTaxBps_,
+        uint16 sellTaxBps_,
+        uint32 taxDurationDays_,
         address marketing_,
-        uint16  liquidityBps_,
-        uint16  burnBps_,
-        uint16  marketingBps_,
-        uint16  dividendBps_
-    
+        uint16 liquidityBps_,
+        uint16 burnBps_,
+        uint16 marketingBps_,
+        uint16 dividendBps_
     ) {
-        router  = IUniswapV2Router(router_);
+        router = IUniswapV2Router(router_);
         factory = factory_;
-        token   = new MemeToken(
-            name_, symbol_, maxSupplyTokens, address(this), creator_,
-            buyTaxBps_, sellTaxBps_, taxDurationDays_
+        token = new MemeToken(
+            name_, symbol_, maxSupplyTokens, address(this), creator_, buyTaxBps_, sellTaxBps_, taxDurationDays_
         );
         creator = creator_;
         feeRecipient = feeRecipient_;
-        marketing    = marketing_ == address(0) ? creator_ : marketing_;
+        marketing = marketing_ == address(0) ? creator_ : marketing_;
         liquidityBps = liquidityBps_;
-        burnBps      = burnBps_;
+        burnBps = burnBps_;
         marketingBps = marketingBps_;
-        dividendBps  = dividendBps_;
+        dividendBps = dividendBps_;
 
         uint256 s = (token.totalSupply() * CURVE_SHARE_BPS) / BPS;
         curveSupply = s;
@@ -123,14 +121,14 @@ contract BondingCurve is ReentrancyGuard {
     function quoteBuy(uint256 ethIn) external view returns (uint256 tokensOut, uint256 ethAccepted) {
         if (graduated || ethIn == 0) return (0, 0);
 
-        uint256 room     = VIRTUAL_QUOTE + QUOTE_TARGET - quoteReserve;
+        uint256 room = VIRTUAL_QUOTE + QUOTE_TARGET - quoteReserve;
         uint256 grossMax = Math.mulDiv(room, BPS, BPS - FEE_BPS);
-        uint256 gross    = ethIn > grossMax ? grossMax : ethIn;
+        uint256 gross = ethIn > grossMax ? grossMax : ethIn;
 
-        uint256 fee     = (gross * FEE_BPS) / BPS;
+        uint256 fee = (gross * FEE_BPS) / BPS;
         uint256 quoteIn = gross - fee;
 
-        uint256 k    = quoteReserve * tokenReserve;
+        uint256 k = quoteReserve * tokenReserve;
         uint256 newQ = quoteReserve + quoteIn;
         uint256 newT = Math.ceilDiv(k, newQ);
 
@@ -141,10 +139,10 @@ contract BondingCurve is ReentrancyGuard {
     function quoteSell(uint256 tokenAmount) external view returns (uint256 ethOut) {
         if (graduated || tokenAmount == 0) return 0;
 
-        uint256 k    = quoteReserve * tokenReserve;
+        uint256 k = quoteReserve * tokenReserve;
         uint256 newT = tokenReserve + tokenAmount;
         uint256 newQ = Math.ceilDiv(k, newT);
-        uint256 out  = quoteReserve - newQ;
+        uint256 out = quoteReserve - newQ;
 
         return out - (out * FEE_BPS) / BPS;
     }
@@ -154,7 +152,7 @@ contract BondingCurve is ReentrancyGuard {
         if (msg.sender != factory) revert NotFactory();
         if (address(referralNFT) != address(0)) revert AlreadySet();
         referralNFT = nft;
-        referralId  = id;
+        referralId = id;
         referralBps = bps;
     }
 
@@ -163,36 +161,27 @@ contract BondingCurve is ReentrancyGuard {
     }
 
     /// Deployer's launch buy — atomic with deployment, exempt from the cap.
-    function buyFor(address beneficiary, uint256 minTokensOut)
-        external
-        payable
-        nonReentrant
-    {
+    function buyFor(address beneficiary, uint256 minTokensOut) external payable nonReentrant {
         if (msg.sender != factory) revert NotFactory();
         _buy(beneficiary, msg.value, minTokensOut, false);
     }
 
-    function _buy(
-        address beneficiary,
-        uint256 valueIn,
-        uint256 minTokensOut,
-        bool enforceCap
-    ) private {
+    function _buy(address beneficiary, uint256 valueIn, uint256 minTokensOut, bool enforceCap) private {
         if (graduated) revert AlreadyGraduated();
         if (valueIn == 0) revert ZeroAmount();
 
-        uint256 room     = VIRTUAL_QUOTE + QUOTE_TARGET - quoteReserve;
+        uint256 room = VIRTUAL_QUOTE + QUOTE_TARGET - quoteReserve;
         uint256 grossMax = Math.mulDiv(room, BPS, BPS - FEE_BPS);
-        uint256 gross    = valueIn > grossMax ? grossMax : valueIn;
-        uint256 refund   = valueIn - gross;
+        uint256 gross = valueIn > grossMax ? grossMax : valueIn;
+        uint256 refund = valueIn - gross;
 
-        uint256 fee     = (gross * FEE_BPS) / BPS;
+        uint256 fee = (gross * FEE_BPS) / BPS;
         uint256 quoteIn = gross - fee;
 
-        uint256 k           = quoteReserve * tokenReserve;
-        uint256 newQuote    = quoteReserve + quoteIn;
+        uint256 k = quoteReserve * tokenReserve;
+        uint256 newQuote = quoteReserve + quoteIn;
         uint256 newTokenRes = Math.ceilDiv(k, newQuote);
-        uint256 tokensOut   = tokenReserve - newTokenRes;
+        uint256 tokensOut = tokenReserve - newTokenRes;
 
         if (tokensOut < minTokensOut) revert SlippageExceeded(tokensOut, minTokensOut);
 
@@ -222,10 +211,10 @@ contract BondingCurve is ReentrancyGuard {
 
         IERC20(address(token)).safeTransferFrom(msg.sender, address(this), tokenAmount);
 
-        uint256 k           = quoteReserve * tokenReserve;
+        uint256 k = quoteReserve * tokenReserve;
         uint256 newTokenRes = tokenReserve + tokenAmount;
-        uint256 newQuote    = Math.ceilDiv(k, newTokenRes);
-        uint256 quoteOut    = quoteReserve - newQuote;
+        uint256 newQuote = Math.ceilDiv(k, newTokenRes);
+        uint256 quoteOut = quoteReserve - newQuote;
 
         uint256 fee = (quoteOut * FEE_BPS) / BPS;
         uint256 net = quoteOut - fee;
@@ -240,7 +229,6 @@ contract BondingCurve is ReentrancyGuard {
         emit Sold(msg.sender, tokenAmount, net, fee);
     }
 
-
     event MigratedToDex(address lpToken, uint256 ethIn, uint256 tokensIn, uint256 liquidity);
     event SplitterDeployed(address splitter);
 
@@ -252,7 +240,7 @@ contract BondingCurve is ReentrancyGuard {
     function _graduate() private {
         graduated = true;
 
-        uint256 ethForLp    = ethCollected();
+        uint256 ethForLp = ethCollected();
         uint256 tokensForLp = token.balanceOf(address(this));
 
         emit Graduated(ethForLp, tokensForLp);
@@ -267,13 +255,10 @@ contract BondingCurve is ReentrancyGuard {
         IERC20(address(token)).forceApprove(address(router), tokensForLp);
 
         try router.addLiquidityETH{value: ethForLp}(
-            address(token),
-            tokensForLp,
-            (tokensForLp * 9000) / BPS,
-            (ethForLp * 9000) / BPS,
-            BURN,
-            block.timestamp
-        ) returns (uint256 amountToken, uint256 amountETH, uint256 liquidity) {
+            address(token), tokensForLp, (tokensForLp * 9000) / BPS, (ethForLp * 9000) / BPS, BURN, block.timestamp
+        ) returns (
+            uint256 amountToken, uint256 amountETH, uint256 liquidity
+        ) {
             lpAmount = liquidity;
             _registerPair();
             _deploySplitter();
@@ -288,9 +273,7 @@ contract BondingCurve is ReentrancyGuard {
     /// means no post-graduation tax, which is far better than a stuck curve.
     function _registerPair() private {
         try router.factory() returns (address f) {
-            try IUniswapV2Factory(f).getPair(address(token), router.WETH())
-                returns (address pair)
-            {
+            try IUniswapV2Factory(f).getPair(address(token), router.WETH()) returns (address pair) {
                 if (pair != address(0)) {
                     lpToken = pair;
                     token.setDexPair(pair);
@@ -307,11 +290,18 @@ contract BondingCurve is ReentrancyGuard {
         if (liquidityBps + burnBps + marketingBps + dividendBps != BPS) return;
 
         try new FeeSplitter(
-            token, router, marketing,
-            liquidityBps, burnBps, marketingBps, dividendBps,
-            curveSupply / 10_000,        // threshold: 0.01% of curve supply
+            token,
+            router,
+            marketing,
+            liquidityBps,
+            burnBps,
+            marketingBps,
+            dividendBps,
+            curveSupply / 10_000, // threshold: 0.01% of curve supply
             FeeSplitter.BurnMode.Threshold
-        ) returns (FeeSplitter s) {
+        ) returns (
+            FeeSplitter s
+        ) {
             splitter = s;
             token.setTaxCollector(address(s));
             address[] memory ex = new address[](2);
@@ -328,7 +318,7 @@ contract BondingCurve is ReentrancyGuard {
 
     function _sendEth(address to, uint256 amount) private {
         if (amount == 0) return;
-        (bool ok, ) = to.call{value: amount}("");
+        (bool ok,) = to.call{value: amount}("");
         if (!ok) revert TransferFailed();
     }
 
@@ -342,8 +332,9 @@ contract BondingCurve is ReentrancyGuard {
             refCut = (fee * referralBps) / BPS;
             if (refCut > 0) {
                 try referralNFT.credit{value: refCut}(referralId) {
-                    // credited
-                } catch {
+                // credited
+                }
+                catch {
                     refCut = 0; // fall through to protocol
                 }
             }
@@ -351,7 +342,4 @@ contract BondingCurve is ReentrancyGuard {
 
         _sendEth(feeRecipient, fee - refCut);
     }
-
-
-    
 }
