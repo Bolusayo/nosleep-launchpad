@@ -37,7 +37,7 @@ jobs:
     env:
       # Get a recent block with:
       #   cast block-number --rpc-url https://rpc.mainnet.chain.robinhood.com
-      FORK_BLOCK: "38355941"
+      FORK_BLOCK: "38363496"
     steps:
       - uses: actions/checkout@v6
         with:
