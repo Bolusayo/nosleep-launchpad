@@ -88,3 +88,5 @@
 - CurveDeployer: 0x8988D503412149100A69469c32d0549f65d215C1
 - ReferralNFT: 0x0D88EC6D54F994514ceB97F6e675090AE9643392
 - LaunchpadFactory: 0x29443615ff549bc2AF60e3B5d670fE6F7630Cb02
+- [ ] Token descriptions go straight into innerHTML with no escaping.
+      A description containing HTML would render. Escape before mainnet.

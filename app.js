@@ -120,15 +120,17 @@ async function connect() {
 
 const TARGET_ETH = '0.004';   // TESTNET — restore to '4' before mainnet
 const ADDR = {
-  factory: '0x29443615ff549bc2AF60e3B5d670fE6F7630Cb02',
-  nft:     '0x0D88EC6D54F994514ceB97F6e675090AE9643392',
+  factory: '0x3296ee0ebB5c079f251Ec3eeB62f790Ef9529EAb',
+  nft:     '0x035Cb2fdeB18f4d7EF3D406e7d4e33299ca56bb2',
 };
 
 const FACTORY_ABI = [
-  'function createToken((string,string,uint256,uint256,address,uint256,uint16,uint16,uint32,address,uint16,uint16,uint16,uint16)) payable returns (address,address,uint256)',  'function deployFee() view returns (uint256)',
+  'function deployFee() view returns (uint256)',
   'function launchCount() view returns (uint256)',
   'function getLaunches(uint256,uint256) view returns ((address,address,address,uint256,uint64)[])',
   'event TokenLaunched(address indexed creator, address indexed token, address curve, uint256 referralId, uint256 devBuy)',
+  'function createToken((string,string,uint256,uint256,address,uint256,uint16,uint16,uint32,address,uint16,uint16,uint16,uint16,string)) payable returns (address,address,uint256)',
+  'function metadataURI(address) view returns (string)',
 ];
 
 function factoryContract(runner) {
@@ -169,6 +171,9 @@ function readForm() {
   const marketingBps = taxOn ? pct('mktBps')  : 0n;
   const dividendBps  = taxOn ? pct('divBps2') : 0n;
 
+  const desc = document.getElementById('tokenDesc')?.value.trim() || '';
+  const metadata = desc ? JSON.stringify({ description: desc }) : '';
+
   return {
     name:   document.getElementById('tokenName').value.trim(),
     symbol: document.getElementById('tokenTicker').value.trim(),
@@ -176,6 +181,7 @@ function readForm() {
     buyTaxBps, sellTaxBps, taxDays,
     marketing, liquidityBps, burnBps, marketingBps, dividendBps,
     taxOn,
+    metadata,
   };
 }
 
@@ -201,7 +207,8 @@ async function deployToken() {
     const params = [
       f.name, f.symbol, f.maxSupply, f.capBps, f.referrer, 0n,
       f.buyTaxBps, f.sellTaxBps, f.taxDays,
-      f.marketing, f.liquidityBps, f.burnBps, f.marketingBps, f.dividendBps
+      f.marketing, f.liquidityBps, f.burnBps, f.marketingBps, f.dividendBps,
+      f.metadata
     ];
 
     await factory.createToken.staticCall(params, { value, from: state.address });
@@ -290,18 +297,22 @@ async function fetchLaunches() {
     const curve = new ethers.Contract(curveAddr, CURVE_ABI, provider);
     const token = new ethers.Contract(tokenAddr, TOKEN_ABI, provider);
 
-    const [name, symbol, collected, graduated] = await Promise.all([
+    const [name, symbol, collected, graduated, meta] = await Promise.all([
       token.name(),
       token.symbol(),
       curve.ethCollected(),
       curve.graduated(),
+      factory.metadataURI(tokenAddr).catch(() => ''),
     ]);
+
+    let description = '';
+    try { description = meta ? (JSON.parse(meta).description || '') : ''; } catch {}
 
     const progress = Number((collected * 10000n) / ethers.parseEther('0.004')) / 100;
 
     return {
       curveAddr, tokenAddr, creator, referralId,
-      name, symbol,
+      name, symbol, description,
       collected,
       graduated,
       progress: Math.min(progress, 100),
@@ -349,6 +360,7 @@ function renderLive() {
       <div class="mono" style="font-size:12px; color:var(--text-dim); margin:10px 0;">
         ${Number(ethers.formatEther(t.collected)).toFixed(6)} / ${TARGET_ETH} ETH · ${t.age}
       </div>
+      ${t.description ? `<div style="font-size:12px; color:var(--text-dim); margin:8px 0; line-height:1.5;">${t.description.slice(0, 140)}</div>` : ''}
       <div class="snipe-bar"><div class="fill" style="width:${t.progress}%; background:var(--gold);"></div></div>
       ${t.graduated ? `
       <div class="mono" style="margin-top:14px; padding:10px; text-align:center; background:rgba(62,240,140,.08); border:1px solid var(--line-soft); color:var(--gold); font-size:12px;">Trading on Uniswap · curve closed</div>
