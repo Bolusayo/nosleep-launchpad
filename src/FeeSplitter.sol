@@ -7,7 +7,6 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {IUniswapV2Router} from "./interfaces/IUniswapV2Router.sol";
 import {MemeToken} from "./MemeToken.sol";
 
-
 interface IDividendVault {
     function deposit(uint256 amount) external;
 }
@@ -18,12 +17,12 @@ interface IDividendVault {
 contract FeeSplitter is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    uint256 public constant BPS  = 10_000;
+    uint256 public constant BPS = 10_000;
     address public constant BURN = 0x000000000000000000000000000000000000dEaD;
 
-    MemeToken        public immutable token;
+    MemeToken public immutable token;
     IUniswapV2Router public immutable router;
-    address          public immutable marketing;
+    address public immutable marketing;
 
     uint16 public immutable liquidityBps;
     uint16 public immutable burnBps;
@@ -33,10 +32,14 @@ contract FeeSplitter is ReentrancyGuard {
     /// Minimum token balance before `process()` will do anything.
     uint256 public immutable threshold;
 
-    enum BurnMode { Threshold, Weekly, Monthly }
+    enum BurnMode {
+        Threshold,
+        Weekly,
+        Monthly
+    }
 
     BurnMode public immutable burnMode;
-    uint64  public lastBurnAt;
+    uint64 public lastBurnAt;
 
     /// Accumulated for dividends, held until the dividend module claims it.
     /// Earmarked but not yet actioned. Excluded from future splits.
@@ -61,7 +64,6 @@ contract FeeSplitter is ReentrancyGuard {
         return block.timestamp >= lastBurnAt + interval;
     }
 
-
     event Processed(uint256 liquidity, uint256 burned, uint256 marketing, uint256 dividends);
     event MarketingPaid(address indexed to, uint256 ethAmount);
     event LiquidityAdded(uint256 tokenAmount, uint256 ethAmount, uint256 liquidity);
@@ -76,7 +78,6 @@ contract FeeSplitter is ReentrancyGuard {
     error AlreadySet();
     error NoVault();
     error BurnNotDue();
-
 
     constructor(
         MemeToken token_,
@@ -94,16 +95,16 @@ contract FeeSplitter is ReentrancyGuard {
         uint256 total = uint256(liquidityBps_) + burnBps_ + marketingBps_ + dividendBps_;
         if (total != BPS) revert SplitMustBeTotal(total);
 
-        token        = token_;
-        router       = router_;
-        marketing    = marketing_;
+        token = token_;
+        router = router_;
+        marketing = marketing_;
         liquidityBps = liquidityBps_;
-        burnBps      = burnBps_;
+        burnBps = burnBps_;
         marketingBps = marketingBps_;
-        dividendBps  = dividendBps_;
-        deployer     = msg.sender;    
-        threshold    = threshold_; 
-        burnMode   = burnMode_;
+        dividendBps = dividendBps_;
+        deployer = msg.sender;
+        threshold = threshold_;
+        burnMode = burnMode_;
         lastBurnAt = uint64(block.timestamp);
     }
 
@@ -114,9 +115,9 @@ contract FeeSplitter is ReentrancyGuard {
         if (bal < threshold) revert BelowThreshold(bal, threshold);
 
         uint256 forLiquidity = (bal * liquidityBps) / BPS;
-        uint256 forBurn      = (bal * burnBps)      / BPS;
+        uint256 forBurn = (bal * burnBps) / BPS;
         uint256 forMarketing = (bal * marketingBps) / BPS;
-        uint256 forDividend  = bal - forLiquidity - forBurn - forMarketing;
+        uint256 forDividend = bal - forLiquidity - forBurn - forMarketing;
 
         if (forBurn > 0) {
             if (burnDue()) {
@@ -128,13 +129,12 @@ contract FeeSplitter is ReentrancyGuard {
             }
         }
 
-        dividendPool  += forDividend;
+        dividendPool += forDividend;
         liquidityPool += forLiquidity;
         marketingPool += forMarketing;
 
         emit Processed(forLiquidity, forBurn, forMarketing, forDividend);
     }
-
 
     /// Swaps the marketing allocation for ETH and forwards it.
     /// Permissionless and separate from `process()` so a failing swap
@@ -158,7 +158,7 @@ contract FeeSplitter is ReentrancyGuard {
         );
 
         uint256 ethOut = address(this).balance - before;
-        (bool ok, ) = marketing.call{value: ethOut}("");
+        (bool ok,) = marketing.call{value: ethOut}("");
         if (!ok) revert SendFailed();
 
         emit MarketingPaid(marketing, ethOut);
@@ -172,7 +172,7 @@ contract FeeSplitter is ReentrancyGuard {
 
         liquidityPool = 0;
 
-        uint256 half      = amount / 2;
+        uint256 half = amount / 2;
         uint256 otherHalf = amount - half;
 
         // Swap half for ETH.
@@ -183,9 +183,7 @@ contract FeeSplitter is ReentrancyGuard {
         path[1] = router.WETH();
 
         uint256 ethBefore = address(this).balance;
-        router.swapExactTokensForETHSupportingFeeOnTransferTokens(
-            half, minEthOut, path, address(this), block.timestamp
-        );
+        router.swapExactTokensForETHSupportingFeeOnTransferTokens(half, minEthOut, path, address(this), block.timestamp);
         uint256 ethOut = address(this).balance - ethBefore;
 
         if (ethOut == 0) revert NothingAllocated();
@@ -193,10 +191,10 @@ contract FeeSplitter is ReentrancyGuard {
         // Pair the other half with the ETH we just received.
         IERC20(address(token)).forceApprove(address(router), otherHalf);
 
-        (, , uint256 liquidity) = router.addLiquidityETH{value: ethOut}(
+        (,, uint256 liquidity) = router.addLiquidityETH{value: ethOut}(
             address(token),
             otherHalf,
-            0,          // ratio is set by the pool; we take what we get
+            0, // ratio is set by the pool; we take what we get
             0,
             BURN,
             block.timestamp
@@ -234,7 +232,7 @@ contract FeeSplitter is ReentrancyGuard {
         if (amount == 0) revert NothingAllocated();
 
         pendingBurn = 0;
-        lastBurnAt  = uint64(block.timestamp);
+        lastBurnAt = uint64(block.timestamp);
 
         IERC20(address(token)).safeTransfer(BURN, amount);
     }

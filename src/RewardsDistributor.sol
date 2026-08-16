@@ -58,11 +58,11 @@ contract RewardsDistributor is AccessControl, ReentrancyGuard {
     function enroll(uint256 tokenId) external {
         if (enrolled[tokenId]) revert AlreadyEnrolled();
 
-        (, , , , , , uint32 genesisNumber, , ReferralNFT.Status status, ) = nft.referrals(tokenId);
+        (,,,,,, uint32 genesisNumber,, ReferralNFT.Status status,) = nft.referrals(tokenId);
         if (status != ReferralNFT.Status.Genesis || genesisNumber == 0) revert NotGenesis();
 
         enrolled[tokenId] = true;
-        eligibleCount    += 1;
+        eligibleCount += 1;
 
         uint256 n = assets.length;
         for (uint256 i = 0; i < n; ++i) {
@@ -101,7 +101,7 @@ contract RewardsDistributor is AccessControl, ReentrancyGuard {
 
     function pending(address asset, uint256 tokenId) public view returns (uint256) {
         if (!enrolled[tokenId]) return 0;
-        uint256 acc  = accPerNft[asset];
+        uint256 acc = accPerNft[asset];
         uint256 debt = rewardDebt[asset][tokenId];
         if (acc <= debt) return 0;
         return (acc - debt) / PRECISION;
@@ -144,7 +144,7 @@ contract RewardsDistributor is AccessControl, ReentrancyGuard {
 
     function _pay(address asset, address to, uint256 amount) private {
         if (asset == ETH) {
-            (bool ok, ) = to.call{value: amount}("");
+            (bool ok,) = to.call{value: amount}("");
             if (!ok) revert SendFailed();
         } else {
             IERC20(asset).safeTransfer(to, amount);

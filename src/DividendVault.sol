@@ -15,7 +15,7 @@ contract DividendVault is ReentrancyGuard {
     address private constant BURN = 0x000000000000000000000000000000000000dEaD;
 
     MemeToken public immutable token;
-    address   public immutable splitter;
+    address public immutable splitter;
 
     /// Cumulative dividend per token held, scaled by PRECISION.
     uint256 public accPerToken;
@@ -24,7 +24,7 @@ contract DividendVault is ReentrancyGuard {
     mapping(address => bool) public excluded;
 
     mapping(address => uint256) public rewardDebt;
-    mapping(address => bool)    public initialised;
+    mapping(address => bool) public initialised;
 
     uint256 public totalDeposited;
     uint256 public totalClaimed;
@@ -37,11 +37,11 @@ contract DividendVault is ReentrancyGuard {
     error NoEligibleSupply();
 
     constructor(MemeToken token_, address splitter_, address[] memory excluded_) {
-        token    = token_;
+        token = token_;
         splitter = splitter_;
 
         excluded[address(this)] = true;
-        excluded[splitter_]     = true;
+        excluded[splitter_] = true;
         for (uint256 i = 0; i < excluded_.length; ++i) {
             excluded[excluded_[i]] = true;
         }
@@ -52,10 +52,7 @@ contract DividendVault is ReentrancyGuard {
         uint256 supply = token.totalSupply();
         // Subtract the known sinks. Kept short deliberately: an unbounded
         // exclusion list would make this loop a gas risk.
-        return supply
-            - token.balanceOf(address(this))
-            - token.balanceOf(splitter)
-            - token.balanceOf(BURN)
+        return supply - token.balanceOf(address(this)) - token.balanceOf(splitter) - token.balanceOf(BURN)
             - token.balanceOf(token.dexPair());
     }
 
@@ -68,7 +65,7 @@ contract DividendVault is ReentrancyGuard {
 
         IERC20(address(token)).safeTransferFrom(msg.sender, address(this), amount);
 
-        accPerToken   += (amount * PRECISION) / eligible;
+        accPerToken += (amount * PRECISION) / eligible;
         totalDeposited += amount;
 
         emit Deposited(amount, (amount * PRECISION) / eligible);
@@ -85,9 +82,9 @@ contract DividendVault is ReentrancyGuard {
         uint256 amount = pending(msg.sender);
         if (amount == 0) revert NothingToClaim();
 
-        rewardDebt[msg.sender]  = accPerToken;
+        rewardDebt[msg.sender] = accPerToken;
         initialised[msg.sender] = true;
-        totalClaimed           += amount;
+        totalClaimed += amount;
 
         IERC20(address(token)).safeTransfer(msg.sender, amount);
         emit Claimed(msg.sender, amount);

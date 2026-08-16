@@ -9,7 +9,7 @@ contract MockV2Router {
     address public immutable WETH = address(0xdead);
 
     ERC20 public lp;
-    bool  public shouldFail;
+    bool public shouldFail;
     MockV2Factory public factoryContract;
 
     constructor() {
@@ -21,7 +21,9 @@ contract MockV2Router {
         return address(factoryContract);
     }
 
-    function setShouldFail(bool v) external { shouldFail = v; }
+    function setShouldFail(bool v) external {
+        shouldFail = v;
+    }
 
     function addLiquidityETH(
         address token,
@@ -35,11 +37,8 @@ contract MockV2Router {
         require(amountTokenDesired >= amountTokenMin, "INSUFFICIENT_TOKEN");
         require(msg.value >= amountETHMin, "INSUFFICIENT_ETH");
 
-        require(
-            IERC20(token).transferFrom(msg.sender, address(this), amountTokenDesired),
-            "TRANSFER_FROM_FAILED"
-        );
-        
+        require(IERC20(token).transferFrom(msg.sender, address(this), amountTokenDesired), "TRANSFER_FROM_FAILED");
+
         uint256 liquidity = _sqrt(amountTokenDesired * msg.value);
         MockLP(address(lp)).mint(to, liquidity);
 
@@ -61,37 +60,40 @@ contract MockV2Router {
         require(!shouldFail, "MockRouter: forced failure");
 
         address tokenIn = path[0];
-        uint256 before  = IERC20(tokenIn).balanceOf(address(this));
-        require(
-            IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn),
-            "TRANSFER_FROM_FAILED"
-        );
+        uint256 before = IERC20(tokenIn).balanceOf(address(this));
+        require(IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn), "TRANSFER_FROM_FAILED");
         uint256 received = IERC20(tokenIn).balanceOf(address(this)) - before;
 
         uint256 ethOut = received / 1e6;
         require(ethOut >= amountOutMin, "INSUFFICIENT_OUTPUT");
         require(address(this).balance >= ethOut, "MOCK_NO_ETH");
 
-        (bool ok, ) = to.call{value: ethOut}("");
+        (bool ok,) = to.call{value: ethOut}("");
         require(ok, "ETH_SEND_FAILED");
     }
 
     receive() external payable {}
 
-    
-
     function _sqrt(uint256 y) private pure returns (uint256 z) {
         if (y > 3) {
             z = y;
             uint256 x = y / 2 + 1;
-            while (x < z) { z = x; x = (y / x + x) / 2; }
-        } else if (y != 0) { z = 1; }
+            while (x < z) {
+                z = x;
+                x = (y / x + x) / 2;
+            }
+        } else if (y != 0) {
+            z = 1;
+        }
     }
 }
 
 contract MockLP is ERC20 {
     constructor() ERC20("Mock LP", "MLP") {}
-    function mint(address to, uint256 amount) external { _mint(to, amount); }
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
 }
 
 contract MockV2Factory {

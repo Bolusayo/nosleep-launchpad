@@ -8,13 +8,13 @@ import {MockV2Router} from "../src/mocks/MockV2Router.sol";
 
 contract BondingCurveTest is Test {
     BondingCurve internal curve;
-    MemeToken    internal token;
+    MemeToken internal token;
     MockV2Router internal router;
 
     address internal creator = makeAddr("creator");
-    address internal feeTo   = makeAddr("feeTo");
-    address internal alice   = makeAddr("alice");
-    address internal bob     = makeAddr("bob");
+    address internal feeTo = makeAddr("feeTo");
+    address internal alice = makeAddr("alice");
+    address internal bob = makeAddr("bob");
 
     uint256 internal constant SUPPLY = 1_000_000_000;
 
@@ -24,14 +24,31 @@ contract BondingCurveTest is Test {
 
     function setUp() public {
         router = new MockV2Router();
-        curve  = new BondingCurve("Fault Line", "FAULT", SUPPLY, creator, feeTo, 0, address(router), address(this), 0, 0, 0, address(0), 0, 0, 0, 0);
-        token  = curve.token();
+        curve = new BondingCurve(
+            "Fault Line",
+            "FAULT",
+            SUPPLY,
+            creator,
+            feeTo,
+            0,
+            address(router),
+            address(this),
+            0,
+            0,
+            0,
+            address(0),
+            0,
+            0,
+            0,
+            0
+        );
+        token = curve.token();
 
         VQ = curve.VIRTUAL_QUOTE();
         QT = curve.QUOTE_TARGET();
 
         vm.deal(alice, 100 ether);
-        vm.deal(bob,   100 ether);
+        vm.deal(bob, 100 ether);
     }
 
     function test_InitialReserves() public view {
@@ -72,7 +89,7 @@ contract BondingCurveTest is Test {
         vm.startPrank(alice);
         curve.buy{value: spend}(0);
 
-        uint256 bal    = token.balanceOf(alice);
+        uint256 bal = token.balanceOf(alice);
         uint256 before = alice.balance;
 
         token.approve(address(curve), bal);
@@ -120,8 +137,24 @@ contract BondingCurveTest is Test {
     }
 
     function test_WalletCapEnforced() public {
-        BondingCurve capped =
-            new BondingCurve("Capped", "CAP", SUPPLY, creator, feeTo, 200, address(router), address(this), 0, 0, 0, address(0), 0, 0, 0, 0);
+        BondingCurve capped = new BondingCurve(
+            "Capped",
+            "CAP",
+            SUPPLY,
+            creator,
+            feeTo,
+            200,
+            address(router),
+            address(this),
+            0,
+            0,
+            0,
+            address(0),
+            0,
+            0,
+            0,
+            0
+        );
         uint256 cap = capped.maxBuyPerWallet();
         assertEq(cap, (capped.curveSupply() * 200) / 10_000);
 
@@ -182,11 +215,11 @@ contract BondingCurveTest is Test {
 
         assertEq(curve.ethCollected(), QT);
     }
-    
+
     function testFuzz_QuoteMatchesActualBuy(uint256 ethIn) public {
         ethIn = bound(ethIn, QT / 1000, QT * 3);
 
-        (uint256 predicted, ) = curve.quoteBuy(ethIn);
+        (uint256 predicted,) = curve.quoteBuy(ethIn);
 
         vm.deal(alice, ethIn);
         vm.prank(alice);
@@ -199,9 +232,22 @@ contract BondingCurveTest is Test {
     /// so trades against the pool are taxed afterwards.
     function test_TaxedTokenGraduatesAndRegistersPair() public {
         BondingCurve taxed = new BondingCurve(
-            "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router), address(this),
-            300, 1000, 365,
-            makeAddr("marketing"), 4000, 1000, 2000, 3000
+            "Taxed",
+            "TAX",
+            SUPPLY,
+            creator,
+            feeTo,
+            0,
+            address(router),
+            address(this),
+            300,
+            1000,
+            365,
+            makeAddr("marketing"),
+            4000,
+            1000,
+            2000,
+            3000
         );
         MemeToken tt = taxed.token();
 
@@ -228,9 +274,22 @@ contract BondingCurveTest is Test {
     /// Curve trading on a taxed token must be untaxed — the curve is exempt.
     function test_CurveTradesAreUntaxedOnTaxedToken() public {
         BondingCurve taxed = new BondingCurve(
-            "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router), address(this),
-            300, 1000, 365,
-            makeAddr("marketing"), 4000, 1000, 2000, 3000
+            "Taxed",
+            "TAX",
+            SUPPLY,
+            creator,
+            feeTo,
+            0,
+            address(router),
+            address(this),
+            300,
+            1000,
+            365,
+            makeAddr("marketing"),
+            4000,
+            1000,
+            2000,
+            3000
         );
         MemeToken tt = taxed.token();
 
@@ -239,7 +298,7 @@ contract BondingCurveTest is Test {
         taxed.buy{value: QT / 10}(0);
 
         // Alice received exactly what the curve quoted — no 3% skim.
-        (uint256 quoted, ) = taxed.quoteBuy(QT / 10);
+        (uint256 quoted,) = taxed.quoteBuy(QT / 10);
         assertGt(tt.balanceOf(alice), 0);
 
         vm.prank(alice);
@@ -249,9 +308,22 @@ contract BondingCurveTest is Test {
 
     function test_SplitterDeployedForTaxedToken() public {
         BondingCurve taxed = new BondingCurve(
-            "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router), address(this),
-            300, 1000, 365,
-            makeAddr("marketing"), 4000, 1000, 2000, 3000
+            "Taxed",
+            "TAX",
+            SUPPLY,
+            creator,
+            feeTo,
+            0,
+            address(router),
+            address(this),
+            300,
+            1000,
+            365,
+            makeAddr("marketing"),
+            4000,
+            1000,
+            2000,
+            3000
         );
         MemeToken tt = taxed.token();
 
@@ -279,9 +351,22 @@ contract BondingCurveTest is Test {
     /// A taxed token gets a dividend vault wired to its splitter at graduation.
     function test_DividendVaultWiredAtGraduation() public {
         BondingCurve taxed = new BondingCurve(
-            "Taxed", "TAX", SUPPLY, creator, feeTo, 0, address(router), address(this),
-            300, 1000, 365,
-            makeAddr("marketing"), 4000, 1000, 2000, 3000
+            "Taxed",
+            "TAX",
+            SUPPLY,
+            creator,
+            feeTo,
+            0,
+            address(router),
+            address(this),
+            300,
+            1000,
+            365,
+            makeAddr("marketing"),
+            4000,
+            1000,
+            2000,
+            3000
         );
         MemeToken tt = taxed.token();
 
@@ -294,5 +379,4 @@ contract BondingCurveTest is Test {
         assertEq(taxed.splitter().dividendVault(), v, "splitter must point at it");
         assertTrue(tt.taxExempt(v), "vault must be exempt so claims aren't taxed");
     }
-    
 }

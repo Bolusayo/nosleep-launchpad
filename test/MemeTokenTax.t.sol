@@ -7,11 +7,11 @@ import {MemeToken} from "../src/MemeToken.sol";
 contract MemeTokenTaxTest is Test {
     MemeToken internal token;
 
-    address internal curve   = makeAddr("curve");
+    address internal curve = makeAddr("curve");
     address internal creator = makeAddr("creator");
-    address internal pair    = makeAddr("pair");
-    address internal alice   = makeAddr("alice");
-    address internal bob     = makeAddr("bob");
+    address internal pair = makeAddr("pair");
+    address internal alice = makeAddr("alice");
+    address internal bob = makeAddr("bob");
 
     uint256 internal constant SUPPLY = 1_000_000_000;
 
@@ -25,7 +25,7 @@ contract MemeTokenTaxTest is Test {
         // Seed alice and the pair from the curve (exempt, so untaxed).
         vm.startPrank(curve);
         token.transfer(alice, 1_000_000e18);
-        token.transfer(pair,  10_000_000e18);
+        token.transfer(pair, 10_000_000e18);
         vm.stopPrank();
     }
 
@@ -44,7 +44,7 @@ contract MemeTokenTaxTest is Test {
         vm.prank(pair);
         token.transfer(bob, 1000e18);
 
-        assertEq(token.balanceOf(bob), 970e18);      // 3% taken
+        assertEq(token.balanceOf(bob), 970e18); // 3% taken
         assertEq(token.balanceOf(curve), SUPPLY * 1e18 - 11_000_000e18 + 30e18);
     }
 
@@ -55,7 +55,7 @@ contract MemeTokenTaxTest is Test {
         vm.prank(alice);
         token.transfer(pair, 1000e18);
 
-        assertEq(token.balanceOf(curve) - curveBefore, 100e18);  // 10%
+        assertEq(token.balanceOf(curve) - curveBefore, 100e18); // 10%
     }
 
     /// Wallet to wallet must never be taxed.

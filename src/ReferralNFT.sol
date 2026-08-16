@@ -8,26 +8,30 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 /// @notice Tradeable referral rights. Whoever holds the NFT earns the
 ///         commission stream from that project, forever.
 contract ReferralNFT is ERC721, AccessControl, ReentrancyGuard {
-    bytes32 public constant MINTER_ROLE  = keccak256("MINTER_ROLE");
+    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant CREDITOR_ROLE = keccak256("CREDITOR_ROLE");
 
-    enum Status { BondingCurve, Migrated, Genesis }
+    enum Status {
+        BondingCurve,
+        Migrated,
+        Genesis
+    }
 
     struct Referral {
         address token;
         address curve;
-        string  name;
-        string  ticker;
-        uint64  launchDate;
-        uint64  migrationDate;
-        uint32  genesisNumber;   // 0 until migrated
-        uint16  commissionBps;
-        Status  status;
+        string name;
+        string ticker;
+        uint64 launchDate;
+        uint64 migrationDate;
+        uint32 genesisNumber; // 0 until migrated
+        uint16 commissionBps;
+        Status status;
         uint256 lifetimeCommissions;
     }
 
     uint256 public nextId = 1;
-    uint32  public nextGenesisNumber = 1;
+    uint32 public nextGenesisNumber = 1;
 
     mapping(uint256 => Referral) public referrals;
 
@@ -89,7 +93,7 @@ contract ReferralNFT is ERC721, AccessControl, ReentrancyGuard {
     function markMigrated(uint256 id) external onlyRole(CREDITOR_ROLE) {
         Referral storage r = referrals[id];
         if (r.status != Status.BondingCurve) revert AlreadyMigrated();
-        r.status        = Status.Genesis;
+        r.status = Status.Genesis;
         r.migrationDate = uint64(block.timestamp);
         r.genesisNumber = nextGenesisNumber++;
         emit GraduatedToGenesis(id, r.genesisNumber);
@@ -113,11 +117,7 @@ contract ReferralNFT is ERC721, AccessControl, ReentrancyGuard {
     }
 
     /// Every mint, transfer and burn flows through here.
-    function _update(address to, uint256 id, address auth)
-        internal
-        override
-        returns (address)
-    {
+    function _update(address to, uint256 id, address auth) internal override returns (address) {
         address from = _ownerOf(id);
         if (from != address(0) && pending[id] > 0) {
             uint256 amount = pending[id];
@@ -129,16 +129,11 @@ contract ReferralNFT is ERC721, AccessControl, ReentrancyGuard {
     }
 
     function _send(address to, uint256 amount) private {
-        (bool ok, ) = to.call{value: amount}("");
+        (bool ok,) = to.call{value: amount}("");
         if (!ok) revert SendFailed();
     }
 
-    function supportsInterface(bytes4 iid)
-        public
-        view
-        override(ERC721, AccessControl)
-        returns (bool)
-    {
+    function supportsInterface(bytes4 iid) public view override(ERC721, AccessControl) returns (bool) {
         return super.supportsInterface(iid);
     }
 }

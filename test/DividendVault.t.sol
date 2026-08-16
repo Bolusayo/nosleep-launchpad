@@ -7,14 +7,14 @@ import {MemeToken} from "../src/MemeToken.sol";
 
 contract DividendVaultTest is Test {
     DividendVault internal vault;
-    MemeToken     internal token;
+    MemeToken internal token;
 
-    address internal curve    = makeAddr("curve");
-    address internal creator  = makeAddr("creator");
+    address internal curve = makeAddr("curve");
+    address internal creator = makeAddr("creator");
     address internal splitter = makeAddr("splitter");
-    address internal pair     = makeAddr("pair");
-    address internal alice    = makeAddr("alice");
-    address internal bob      = makeAddr("bob");
+    address internal pair = makeAddr("pair");
+    address internal alice = makeAddr("alice");
+    address internal bob = makeAddr("bob");
 
     address internal constant BURN = 0x000000000000000000000000000000000000dEaD;
     uint256 internal constant SUPPLY = 1_000_000_000;
@@ -31,10 +31,10 @@ contract DividendVaultTest is Test {
 
         // Curve is exempt, so these move untaxed.
         vm.startPrank(curve);
-        token.transfer(alice,    100_000_000e18);   // 10%
-        token.transfer(bob,      100_000_000e18);   // 10%
-        token.transfer(pair,     500_000_000e18);   // 50% — excluded
-        token.transfer(splitter,  10_000_000e18);   // dividend allocation
+        token.transfer(alice, 100_000_000e18); // 10%
+        token.transfer(bob, 100_000_000e18); // 10%
+        token.transfer(pair, 500_000_000e18); // 50% — excluded
+        token.transfer(splitter, 10_000_000e18); // dividend allocation
         vm.stopPrank();
 
         vm.prank(splitter);
@@ -42,9 +42,8 @@ contract DividendVaultTest is Test {
     }
 
     function test_EligibleSupplyExcludesSinks() public view {
-        uint256 expected = SUPPLY * 1e18
-            - 500_000_000e18   // pair
-            - 10_000_000e18;   // splitter
+        uint256 expected = SUPPLY * 1e18 - 500_000_000e18 // pair
+            - 10_000_000e18; // splitter
         assertEq(vault.eligibleSupply(), expected);
     }
 

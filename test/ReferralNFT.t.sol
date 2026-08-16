@@ -10,7 +10,7 @@ contract ReferralNFTTest is Test {
     address internal admin = makeAddr("admin");
     address internal curve = makeAddr("curve");
     address internal alice = makeAddr("alice");
-    address internal bob   = makeAddr("bob");
+    address internal bob = makeAddr("bob");
     address internal token = makeAddr("token");
 
     uint256 internal id;
@@ -50,7 +50,7 @@ contract ReferralNFTTest is Test {
         nft.credit{value: 1 ether}(id);
 
         assertEq(nft.pending(id), 1 ether);
-        (, , , , , , , , , uint256 lifetime) = nft.referrals(id);
+        (,,,,,,,,, uint256 lifetime) = nft.referrals(id);
         assertEq(lifetime, 1 ether);
     }
 
@@ -119,8 +119,7 @@ contract ReferralNFTTest is Test {
         vm.prank(curve);
         nft.markMigrated(id);
 
-        (, , , , , , uint32 genesisNumber, , ReferralNFT.Status status, ) =
-            nft.referrals(id);
+        (,,,,,, uint32 genesisNumber,, ReferralNFT.Status status,) = nft.referrals(id);
 
         assertEq(genesisNumber, 1);
         assertEq(uint8(status), uint8(ReferralNFT.Status.Genesis));
@@ -143,8 +142,8 @@ contract ReferralNFTTest is Test {
         nft.markMigrated(id2);
         vm.stopPrank();
 
-        (, , , , , , uint32 g1, , , ) = nft.referrals(id);
-        (, , , , , , uint32 g2, , , ) = nft.referrals(id2);
+        (,,,,,, uint32 g1,,,) = nft.referrals(id);
+        (,,,,,, uint32 g2,,,) = nft.referrals(id2);
         assertEq(g1, 1);
         assertEq(g2, 2);
     }

@@ -7,9 +7,9 @@ import {MemeToken} from "../src/MemeToken.sol";
 contract MemeTokenTest is Test {
     MemeToken internal token;
 
-    address internal curve   = makeAddr("curve");
+    address internal curve = makeAddr("curve");
     address internal creator = makeAddr("creator");
-    address internal alice   = makeAddr("alice");
+    address internal alice = makeAddr("alice");
 
     uint256 internal constant SUPPLY = 1_000_000_000; // 1B, the UI default
 
@@ -36,19 +36,12 @@ contract MemeTokenTest is Test {
     }
 
     function test_RevertWhen_SupplyTooLow() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(MemeToken.SupplyOutOfRange.selector, 999_999)
-        );
+        vm.expectRevert(abi.encodeWithSelector(MemeToken.SupplyOutOfRange.selector, 999_999));
         new MemeToken("Too Small", "SMALL", 999_999, curve, creator, 0, 0, 0);
     }
 
     function test_RevertWhen_SupplyTooHigh() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                MemeToken.SupplyOutOfRange.selector,
-                1_000_000_000_001
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(MemeToken.SupplyOutOfRange.selector, 1_000_000_000_001));
         new MemeToken("Too Big", "BIG", 1_000_000_000_001, curve, creator, 0, 0, 0);
     }
 

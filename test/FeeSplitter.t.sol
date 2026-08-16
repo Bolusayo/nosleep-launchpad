@@ -8,28 +8,32 @@ import {MockV2Router} from "../src/mocks/MockV2Router.sol";
 import {IUniswapV2Router} from "../src/interfaces/IUniswapV2Router.sol";
 
 contract FeeSplitterTest is Test {
-    FeeSplitter  internal splitter;
-    MemeToken    internal token;
+    FeeSplitter internal splitter;
+    MemeToken internal token;
     MockV2Router internal router;
 
-    address internal curve     = makeAddr("curve");
-    address internal creator   = makeAddr("creator");
+    address internal curve = makeAddr("curve");
+    address internal creator = makeAddr("creator");
     address internal marketing = makeAddr("marketing");
 
-    uint256 internal constant SUPPLY    = 1_000_000_000;
+    uint256 internal constant SUPPLY = 1_000_000_000;
     uint256 internal constant THRESHOLD = 1000e18;
 
     function setUp() public {
         router = new MockV2Router();
-        token  = new MemeToken("Taxed", "TAX", SUPPLY, curve, creator, 300, 1000, 365);
+        token = new MemeToken("Taxed", "TAX", SUPPLY, curve, creator, 300, 1000, 365);
 
         // UI defaults: 40 / 10 / 20 / 30
         splitter = new FeeSplitter(
             token,
             IUniswapV2Router(address(router)),
             marketing,
-            4000, 1000, 2000, 3000,
-           THRESHOLD, FeeSplitter.BurnMode.Threshold
+            4000,
+            1000,
+            2000,
+            3000,
+            THRESHOLD,
+            FeeSplitter.BurnMode.Threshold
         );
     }
 
@@ -41,16 +45,30 @@ contract FeeSplitterTest is Test {
     function test_SplitMustTotalTenThousand() public {
         vm.expectRevert(abi.encodeWithSelector(FeeSplitter.SplitMustBeTotal.selector, uint256(9000)));
         new FeeSplitter(
-            token, IUniswapV2Router(address(router)), marketing,
-            4000, 1000, 2000, 2000, THRESHOLD, FeeSplitter.BurnMode.Threshold
+            token,
+            IUniswapV2Router(address(router)),
+            marketing,
+            4000,
+            1000,
+            2000,
+            2000,
+            THRESHOLD,
+            FeeSplitter.BurnMode.Threshold
         );
     }
 
     function test_RevertWhen_MarketingIsZero() public {
         vm.expectRevert(FeeSplitter.ZeroAddress.selector);
         new FeeSplitter(
-            token, IUniswapV2Router(address(router)), address(0),
-            4000, 1000, 2000, 3000, THRESHOLD, FeeSplitter.BurnMode.Threshold
+            token,
+            IUniswapV2Router(address(router)),
+            address(0),
+            4000,
+            1000,
+            2000,
+            3000,
+            THRESHOLD,
+            FeeSplitter.BurnMode.Threshold
         );
     }
 
@@ -106,9 +124,9 @@ contract FeeSplitterTest is Test {
 
         splitter.process();
 
-        uint256 burned    = token.balanceOf(splitter.BURN());
+        uint256 burned = token.balanceOf(splitter.BURN());
         uint256 dividends = splitter.dividendPool();
-        uint256 held      = token.balanceOf(address(splitter));
+        uint256 held = token.balanceOf(address(splitter));
 
         assertEq(burned + held, amount, "nothing may vanish");
         assertLe(dividends, held, "dividend pool cannot exceed what's held");
@@ -176,11 +194,7 @@ contract FeeSplitterTest is Test {
         splitter.addLiquidity(0);
 
         assertEq(splitter.liquidityPool(), 0, "allocation must be drained");
-        assertGt(
-            MemeToken(lp).balanceOf(splitter.BURN()),
-            burnedBefore,
-            "LP must be minted to the burn address"
-        );
+        assertGt(MemeToken(lp).balanceOf(splitter.BURN()), burnedBefore, "LP must be minted to the burn address");
     }
 
     function test_RevertWhen_NoLiquidityAllocated() public {
@@ -221,8 +235,15 @@ contract FeeSplitterTest is Test {
 
     function test_WeeklyModeHoldsBurnUntilDue() public {
         FeeSplitter weekly = new FeeSplitter(
-            token, IUniswapV2Router(address(router)), marketing,
-            4000, 1000, 2000, 3000, THRESHOLD, FeeSplitter.BurnMode.Weekly
+            token,
+            IUniswapV2Router(address(router)),
+            marketing,
+            4000,
+            1000,
+            2000,
+            3000,
+            THRESHOLD,
+            FeeSplitter.BurnMode.Weekly
         );
 
         assertFalse(weekly.burnDue(), "first window has not elapsed");
@@ -237,17 +258,24 @@ contract FeeSplitterTest is Test {
 
     function test_WeeklyBurnReleasesAfterInterval() public {
         FeeSplitter weekly = new FeeSplitter(
-            token, IUniswapV2Router(address(router)), marketing,
-            4000, 1000, 2000, 3000, THRESHOLD, FeeSplitter.BurnMode.Weekly
+            token,
+            IUniswapV2Router(address(router)),
+            marketing,
+            4000,
+            1000,
+            2000,
+            3000,
+            THRESHOLD,
+            FeeSplitter.BurnMode.Weekly
         );
 
         vm.prank(curve);
         token.transfer(address(weekly), 10_000e18);
-        weekly.process();                       // consumes the first window
+        weekly.process(); // consumes the first window
 
         vm.prank(curve);
         token.transfer(address(weekly), 10_000e18);
-        weekly.process();                       // held
+        weekly.process(); // held
 
         vm.expectRevert(FeeSplitter.BurnNotDue.selector);
         weekly.executeBurn();

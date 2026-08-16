@@ -16,33 +16,46 @@ contract CurveDeployer {
         if (factory != address(0)) revert AlreadySet();
         factory = factory_;
     }
+
     struct Args {
-        string  name;
-        string  symbol;
+        string name;
+        string symbol;
         uint256 maxSupply;
         address creator;
         address feeRecipient;
         uint256 capBps;
         address router;
         address launchpad;
-        uint16  buyTaxBps;
-        uint16  sellTaxBps;
-        uint32  taxDurationDays;
+        uint16 buyTaxBps;
+        uint16 sellTaxBps;
+        uint32 taxDurationDays;
         address marketing;
-        uint16  liquidityBps;
-        uint16  burnBps;
-        uint16  marketingBps;
-        uint16  dividendBps;
+        uint16 liquidityBps;
+        uint16 burnBps;
+        uint16 marketingBps;
+        uint16 dividendBps;
     }
 
     function deploy(Args calldata a) external returns (BondingCurve curve) {
         if (msg.sender != factory) revert NotFactory();
 
         curve = new BondingCurve(
-            a.name, a.symbol, a.maxSupply, a.creator, a.feeRecipient,
-            a.capBps, a.router, a.launchpad,
-            a.buyTaxBps, a.sellTaxBps, a.taxDurationDays,
-            a.marketing, a.liquidityBps, a.burnBps, a.marketingBps, a.dividendBps
+            a.name,
+            a.symbol,
+            a.maxSupply,
+            a.creator,
+            a.feeRecipient,
+            a.capBps,
+            a.router,
+            a.launchpad,
+            a.buyTaxBps,
+            a.sellTaxBps,
+            a.taxDurationDays,
+            a.marketing,
+            a.liquidityBps,
+            a.burnBps,
+            a.marketingBps,
+            a.dividendBps
         );
     }
 }

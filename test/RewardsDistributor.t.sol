@@ -8,14 +8,14 @@ import {MemeToken} from "../src/MemeToken.sol";
 
 contract RewardsDistributorTest is Test {
     RewardsDistributor internal dist;
-    ReferralNFT        internal nft;
+    ReferralNFT internal nft;
 
-    address internal admin    = makeAddr("admin");
-    address internal curve    = makeAddr("curve");
+    address internal admin = makeAddr("admin");
+    address internal curve = makeAddr("curve");
     address internal treasury = makeAddr("treasury");
-    address internal alice    = makeAddr("alice");
-    address internal bob      = makeAddr("bob");
-    address internal carol    = makeAddr("carol");
+    address internal alice = makeAddr("alice");
+    address internal bob = makeAddr("bob");
+    address internal carol = makeAddr("carol");
 
     uint256 internal idA;
     uint256 internal idB;
@@ -23,7 +23,7 @@ contract RewardsDistributorTest is Test {
 
     function setUp() public {
         vm.startPrank(admin);
-        nft  = new ReferralNFT(admin);
+        nft = new ReferralNFT(admin);
         dist = new RewardsDistributor(admin, nft);
 
         nft.grantRole(nft.MINTER_ROLE(), admin);
@@ -31,7 +31,7 @@ contract RewardsDistributorTest is Test {
         dist.grantRole(dist.DEPOSITOR_ROLE(), treasury);
 
         idA = nft.mintReferral(alice, makeAddr("tokA"), curve, "A", "AAA", 100);
-        idB = nft.mintReferral(bob,   makeAddr("tokB"), curve, "B", "BBB", 100);
+        idB = nft.mintReferral(bob, makeAddr("tokB"), curve, "B", "BBB", 100);
         vm.stopPrank();
 
         vm.deal(treasury, 100 ether);
@@ -130,16 +130,16 @@ contract RewardsDistributorTest is Test {
         dist.enroll(idA);
 
         vm.prank(treasury);
-        dist.depositEth{value: 10 ether}();   // only A is eligible
+        dist.depositEth{value: 10 ether}(); // only A is eligible
 
         _graduate(idB);
-        dist.enroll(idB);                      // B joins afterwards
+        dist.enroll(idB); // B joins afterwards
 
         assertEq(dist.pending(ETH, idB), 0, "late entrant must start at zero");
         assertEq(dist.pending(ETH, idA), 10 ether);
 
         vm.prank(treasury);
-        dist.depositEth{value: 10 ether}();    // now split two ways
+        dist.depositEth{value: 10 ether}(); // now split two ways
 
         assertEq(dist.pending(ETH, idB), 5 ether);
         assertEq(dist.pending(ETH, idA), 15 ether);
