@@ -1,12 +1,9 @@
 name: CI
-
 permissions: {}
-
 on:
   push:
   pull_request:
   workflow_dispatch:
-
 jobs:
   check:
     name: Foundry project
@@ -18,18 +15,49 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
-
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
-
       - name: Show Forge version
         run: forge --version
-
       - name: Run Forge fmt
         run: forge fmt --check
-
       - name: Run Forge build
         run: forge build --sizes
-
+      # Fork tests are excluded here — they need a mainnet RPC and run in the
+      # fork-test job below. Without --fork-url their setUp() reverts on the
+      # chainid guard.
       - name: Run Forge tests
-        run: forge test -vvv
+        run: forge test -vvv --no-match-path 'test/Fork*.t.sol'
+
+  fork-test:
+    name: Graduation against real Uniswap (fork)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Get a recent block with:
+      #   cast block-number --rpc-url https://rpc.mainnet.chain.robinhood.com
+      FORK_BLOCK: "38355941"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+      # Foundry caches fork RPC responses here. Keyed on the pinned block so
+      # bumping the block correctly invalidates the cache.
+      - name: Cache fork state
+        uses: actions/cache@v4
+        with:
+          path: ~/.foundry/cache/rpc
+          key: foundry-rpc-4663-${{ env.FORK_BLOCK }}
+      - name: Run fork tests
+        env:
+          RH_MAINNET_RPC_URL: ${{ secrets.RH_MAINNET_RPC_URL }}
+        run: |
+          forge test \
+            --match-path 'test/ForkGraduation.t.sol' \
+            -vv \
+            --fork-url "$RH_MAINNET_RPC_URL" \
+            --fork-block-number "$FORK_BLOCK"
