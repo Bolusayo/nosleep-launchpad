@@ -26,6 +26,9 @@ contract DividendVault is ReentrancyGuard {
     mapping(address => uint256) public rewardDebt;
     mapping(address => bool) public initialised;
 
+    /// Dividends banked at a balance change, awaiting claim.
+    mapping(address => uint256) public claimable;
+
     uint256 public totalDeposited;
     uint256 public totalClaimed;
 
@@ -35,6 +38,7 @@ contract DividendVault is ReentrancyGuard {
     error NotSplitter();
     error NothingToClaim();
     error NoEligibleSupply();
+    error NotToken();
 
     constructor(MemeToken token_, address splitter_, address[] memory excluded_) {
         token = token_;
@@ -71,17 +75,56 @@ contract DividendVault is ReentrancyGuard {
         emit Deposited(amount, (amount * PRECISION) / eligible);
     }
 
+    /// Called by the token before every balance change. Not reentrancy-guarded
+    /// on purpose: it runs inside a transfer that may itself sit inside a
+    /// guarded claim. Access control is the token check.
+    function onBalanceChange(address from, address to) external {
+        if (msg.sender != address(token)) revert NotToken();
+        _settle(from);
+        _settle(to);
+    }
+
+    /// Banks what `h` has earned on their current balance, then snapshots
+    /// their debt. Must be called BEFORE the balance moves.
+    function _settle(address h) internal {
+        if (h == address(0) || excluded[h]) return;
+
+        uint256 acc = accPerToken;
+
+        if (!initialised[h]) {
+            initialised[h] = true;
+            // Balance is still pre-transfer here. Zero means this wallet is
+            // arriving for the first time, so it starts at the current
+            // accumulator and earns nothing retroactively.
+            if (token.balanceOf(h) == 0) {
+                rewardDebt[h] = acc;
+                return;
+            }
+            // Non-zero means it held before the vault existed; debt stays 0.
+            rewardDebt[h] = 0;
+        }
+
+        uint256 debt = rewardDebt[h];
+        if (acc > debt) {
+            uint256 owed = (token.balanceOf(h) * (acc - debt)) / PRECISION;
+            if (owed > 0) claimable[h] += owed;
+        }
+        rewardDebt[h] = acc;
+    }
+
     function pending(address holder) public view returns (uint256) {
         if (excluded[holder]) return 0;
+        uint256 acc = accPerToken;
         uint256 debt = initialised[holder] ? rewardDebt[holder] : 0;
-        if (accPerToken <= debt) return 0;
-        return (token.balanceOf(holder) * (accPerToken - debt)) / PRECISION;
+        uint256 accrued = acc > debt ? (token.balanceOf(holder) * (acc - debt)) / PRECISION : 0;
+        return claimable[holder] + accrued;
     }
 
     function claim() external nonReentrant {
         uint256 amount = pending(msg.sender);
         if (amount == 0) revert NothingToClaim();
 
+        claimable[msg.sender] = 0;
         rewardDebt[msg.sender] = accPerToken;
         initialised[msg.sender] = true;
         totalClaimed += amount;
