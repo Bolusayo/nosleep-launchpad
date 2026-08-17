@@ -18,3 +18,5 @@ docs/
 .env
 .env.*
 !.env.example
+nosleep-src.tar.gz
+nosleep-src.tar.gz
