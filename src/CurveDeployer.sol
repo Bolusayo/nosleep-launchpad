@@ -34,6 +34,7 @@ contract CurveDeployer {
         uint16 burnBps;
         uint16 marketingBps;
         uint16 dividendBps;
+        address splitterDeployer;
     }
 
     function deploy(Args calldata a) external returns (BondingCurve curve) {
@@ -55,7 +56,8 @@ contract CurveDeployer {
             a.liquidityBps,
             a.burnBps,
             a.marketingBps,
-            a.dividendBps
+            a.dividendBps,
+            a.splitterDeployer
         );
     }
 }

@@ -5,8 +5,10 @@ import {Test} from "forge-std/Test.sol";
 import {BondingCurve} from "../src/BondingCurve.sol";
 import {MemeToken} from "../src/MemeToken.sol";
 import {MockV2Router} from "../src/mocks/MockV2Router.sol";
+import {SplitterDeployer} from "../src/SplitterDeployer.sol";
 
 contract BondingCurveTest is Test {
+    SplitterDeployer internal splitterDeployer;
     BondingCurve internal curve;
     MemeToken internal token;
     MockV2Router internal router;
@@ -23,6 +25,7 @@ contract BondingCurveTest is Test {
     uint256 internal QT; // ETH raised to graduate
 
     function setUp() public {
+        splitterDeployer = new SplitterDeployer();
         router = new MockV2Router();
         curve = new BondingCurve(
             "Fault Line",
@@ -40,7 +43,8 @@ contract BondingCurveTest is Test {
             0,
             0,
             0,
-            0
+            0,
+            address(splitterDeployer)
         );
         token = curve.token();
 
@@ -153,7 +157,8 @@ contract BondingCurveTest is Test {
             0,
             0,
             0,
-            0
+            0,
+            address(splitterDeployer)
         );
         uint256 cap = capped.maxBuyPerWallet();
         assertEq(cap, (capped.curveSupply() * 200) / 10_000);
@@ -247,7 +252,8 @@ contract BondingCurveTest is Test {
             4000,
             1000,
             2000,
-            3000
+            3000,
+            address(splitterDeployer)
         );
         MemeToken tt = taxed.token();
 
@@ -289,7 +295,8 @@ contract BondingCurveTest is Test {
             4000,
             1000,
             2000,
-            3000
+            3000,
+            address(splitterDeployer)
         );
         MemeToken tt = taxed.token();
 
@@ -323,7 +330,8 @@ contract BondingCurveTest is Test {
             4000,
             1000,
             2000,
-            3000
+            3000,
+            address(splitterDeployer)
         );
         MemeToken tt = taxed.token();
 
@@ -366,7 +374,8 @@ contract BondingCurveTest is Test {
             4000,
             1000,
             2000,
-            3000
+            3000,
+            address(splitterDeployer)
         );
         MemeToken tt = taxed.token();
 

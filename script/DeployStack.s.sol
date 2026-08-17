@@ -6,6 +6,7 @@ import {ReferralNFT} from "../src/ReferralNFT.sol";
 import {LaunchpadFactory} from "../src/LaunchpadFactory.sol";
 import {MockV2Router} from "../src/mocks/MockV2Router.sol";
 import {CurveDeployer} from "../src/CurveDeployer.sol";
+import {SplitterDeployer} from "../src/SplitterDeployer.sol";
 
 contract DeployStack is Script {
     function run() external {
@@ -18,7 +19,9 @@ contract DeployStack is Script {
         ReferralNFT nft = new ReferralNFT(me);
 
         CurveDeployer deployer = new CurveDeployer();
-        LaunchpadFactory factory = new LaunchpadFactory(me, me, nft, address(router), deployer);
+        SplitterDeployer splitterDeployer = new SplitterDeployer();
+        LaunchpadFactory factory =
+            new LaunchpadFactory(me, me, nft, address(router), deployer, address(splitterDeployer));
         deployer.setFactory(address(factory));
 
         nft.grantRole(nft.MINTER_ROLE(), address(factory));
@@ -29,6 +32,7 @@ contract DeployStack is Script {
         console.log("LaunchpadFactory: ", address(factory));
         console.log("MockV2Router:     ", address(router));
         console.log("CurveDeployer:    ", address(deployer));
+        console.log("SplitterDeployer: ", address(splitterDeployer));
     }
 }
 

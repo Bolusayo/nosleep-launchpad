@@ -5,6 +5,7 @@ import {Script, console} from "forge-std/Script.sol";
 import {ReferralNFT} from "../src/ReferralNFT.sol";
 import {LaunchpadFactory} from "../src/LaunchpadFactory.sol";
 import {CurveDeployer} from "../src/CurveDeployer.sol";
+import {SplitterDeployer} from "../src/SplitterDeployer.sol";
 
 contract DeployMainnet is Script {
     // Uniswap V2 Router02 on Robinhood Chain mainnet (chainId 4663).
@@ -24,7 +25,8 @@ contract DeployMainnet is Script {
         ReferralNFT nft = new ReferralNFT(me);
 
         CurveDeployer deployer = new CurveDeployer();
-        LaunchpadFactory factory = new LaunchpadFactory(me, me, nft, ROUTER, deployer);
+        SplitterDeployer splitterDeployer = new SplitterDeployer();
+        LaunchpadFactory factory = new LaunchpadFactory(me, me, nft, ROUTER, deployer, address(splitterDeployer));
         deployer.setFactory(address(factory));
 
         nft.grantRole(nft.MINTER_ROLE(), address(factory));
@@ -35,5 +37,6 @@ contract DeployMainnet is Script {
         console.log("LaunchpadFactory: ", address(factory));
         console.log("Router (real):    ", ROUTER);
         console.log("CurveDeployer:    ", address(deployer));
+        console.log("SplitterDeployer: ", address(splitterDeployer));
     }
 }

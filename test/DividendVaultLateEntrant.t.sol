@@ -54,7 +54,6 @@ contract DividendVaultLateEntrantTest is Test {
         ex[0] = pair;
         vault = new DividendVault(token, splitter, ex);
 
-
         vm.prank(curve);
         token.setDividendVault(address(vault));
 

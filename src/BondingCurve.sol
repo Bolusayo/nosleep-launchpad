@@ -9,6 +9,7 @@ import {MemeToken} from "./MemeToken.sol";
 import {FeeSplitter} from "./FeeSplitter.sol";
 import {DividendVault} from "./DividendVault.sol";
 import {ReferralNFT} from "./ReferralNFT.sol";
+import {SplitterDeployer} from "./SplitterDeployer.sol";
 import {IUniswapV2Router, IUniswapV2Factory} from "./interfaces/IUniswapV2Router.sol";
 
 /// @notice Constant-product bonding curve with virtual reserves.
@@ -39,6 +40,8 @@ contract BondingCurve is ReentrancyGuard {
     bool public graduated;
 
     IUniswapV2Router public immutable router;
+    /// Holds FeeSplitter/DividendVault bytecode. See SplitterDeployer.
+    SplitterDeployer public immutable splitterDeployer;
     address public lpToken;
     uint256 public lpAmount;
 
@@ -87,9 +90,11 @@ contract BondingCurve is ReentrancyGuard {
         uint16 liquidityBps_,
         uint16 burnBps_,
         uint16 marketingBps_,
-        uint16 dividendBps_
+        uint16 dividendBps_,
+        address splitterDeployer_
     ) {
         router = IUniswapV2Router(router_);
+        splitterDeployer = SplitterDeployer(splitterDeployer_);
         factory = factory_;
         token = new MemeToken(
             name_, symbol_, maxSupplyTokens, address(this), creator_, buyTaxBps_, sellTaxBps_, taxDurationDays_
@@ -288,29 +293,31 @@ contract BondingCurve is ReentrancyGuard {
     function _deploySplitter() private {
         if (token.buyTaxBps() == 0 && token.sellTaxBps() == 0) return;
         if (liquidityBps + burnBps + marketingBps + dividendBps != BPS) return;
+        if (address(splitterDeployer) == address(0)) return;
 
-        try new FeeSplitter(
-            token,
-            router,
-            marketing,
-            liquidityBps,
-            burnBps,
-            marketingBps,
-            dividendBps,
-            curveSupply / 10_000, // threshold: 0.01% of curve supply
-            FeeSplitter.BurnMode.Threshold
+        address[] memory ex = new address[](2);
+        ex[0] = token.dexPair();
+        ex[1] = BURN;
+
+        try splitterDeployer.deploy(
+            SplitterDeployer.Args({
+                token: token,
+                router: router,
+                marketing: marketing,
+                liquidityBps: liquidityBps,
+                burnBps: burnBps,
+                marketingBps: marketingBps,
+                dividendBps: dividendBps,
+                threshold: curveSupply / 10_000, // 0.01% of curve supply
+                burnMode: FeeSplitter.BurnMode.Threshold,
+                excluded: ex
+            })
         ) returns (
-            FeeSplitter s
+            FeeSplitter s, DividendVault v
         ) {
             splitter = s;
-            token.setTaxCollector(address(s));
-            address[] memory ex = new address[](2);
-            ex[0] = token.dexPair();
-            ex[1] = BURN;
-
-            DividendVault v = new DividendVault(token, address(s), ex);
             dividendVault = v;
-            s.setDividendVault(address(v));
+            token.setTaxCollector(address(s));
             token.setExempt(address(v), true);
             token.setDividendVault(address(v));
             emit SplitterDeployed(address(s));

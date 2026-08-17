@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {BondingCurve} from "../src/BondingCurve.sol";
 import {MemeToken} from "../src/MemeToken.sol";
 import {IUniswapV2Router, IUniswapV2Factory} from "../src/interfaces/IUniswapV2Router.sol";
+import {SplitterDeployer} from "../src/SplitterDeployer.sol";
 
 interface IERC20Min {
     function balanceOf(address) external view returns (uint256);
@@ -24,6 +25,7 @@ interface IERC20Min {
 ///   forge test --match-path test/ForkGraduation.t.sol -vv \
 ///     --fork-url https://rpc.mainnet.chain.robinhood.com
 contract ForkGraduationTest is Test {
+    SplitterDeployer internal splitterDeployer;
     // Verified on-chain: bytecode is canonical UniswapV2Router02, and WETH()
     // returns the WETH address below.
     address constant ROUTER = 0x89e5DB8B5aA49aA85AC63f691524311AEB649eba;
@@ -43,6 +45,7 @@ contract ForkGraduationTest is Test {
     uint256 internal QT;
 
     function setUp() public {
+        splitterDeployer = new SplitterDeployer();
         // Fail loudly rather than silently testing against a blank chain.
         require(block.chainid == 4663, "ForkGraduation: must run with --fork-url pointed at Robinhood Chain mainnet");
         require(ROUTER.code.length > 0, "ForkGraduation: no router code on fork");
@@ -57,7 +60,23 @@ contract ForkGraduationTest is Test {
 
     function _newCurve() internal returns (BondingCurve c) {
         c = new BondingCurve(
-            "Fault Line", "FAULT", SUPPLY, creator, feeTo, 0, ROUTER, address(this), 0, 0, 0, address(0), 0, 0, 0, 0
+            "Fault Line",
+            "FAULT",
+            SUPPLY,
+            creator,
+            feeTo,
+            0,
+            ROUTER,
+            address(this),
+            0,
+            0,
+            0,
+            address(0),
+            0,
+            0,
+            0,
+            0,
+            address(splitterDeployer)
         );
         VQ = c.VIRTUAL_QUOTE();
         QT = c.QUOTE_TARGET();
@@ -80,7 +99,8 @@ contract ForkGraduationTest is Test {
             4000,
             1000,
             2000,
-            3000
+            3000,
+            address(splitterDeployer)
         );
         VQ = c.VIRTUAL_QUOTE();
         QT = c.QUOTE_TARGET();
