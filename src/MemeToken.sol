@@ -3,6 +3,10 @@ pragma solidity ^0.8.28;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
+interface IDividendSync {
+    function onBalanceChange(address from, address to) external;
+}
+
 /// @notice Fixed-supply token deployed by the No Sleep launchpad.
 ///         Optional asymmetric buy/sell tax, collected to the curve during
 ///         the bonding phase and to the collector after graduation.
@@ -30,6 +34,10 @@ contract MemeToken is ERC20 {
     /// Where tax goes. The curve during the bonding phase, the splitter after.
     address public taxCollector;
 
+    /// Dividend vault notified before balances move, so it can settle accrued
+    /// dividends and snapshot new holders. Set once at graduation.
+    address public dividendVault;
+
     event TaxTaken(address indexed from, address indexed to, uint256 amount, bool isBuy);
     event DexPairSet(address pair);
 
@@ -38,6 +46,7 @@ contract MemeToken is ERC20 {
     error TaxTooHigh(uint16 given);
     error NotCurve();
     error PairAlreadySet();
+    error VaultAlreadySet();
 
     constructor(
         string memory name_,
@@ -91,6 +100,15 @@ contract MemeToken is ERC20 {
         taxExempt[collector] = true;
     }
 
+    /// Wires the dividend vault. Curve-only, once, at graduation.
+    function setDividendVault(address vault) external {
+        if (msg.sender != curve) revert NotCurve();
+        if (vault == address(0)) revert ZeroAddress();
+        if (dividendVault != address(0)) revert VaultAlreadySet();
+        dividendVault = vault;
+        taxExempt[vault] = true;
+    }
+
     /// Marks the router exempt. Curve-only, callable before graduation.
     function setExempt(address who, bool on) external {
         if (msg.sender != curve) revert NotCurve();
@@ -99,6 +117,13 @@ contract MemeToken is ERC20 {
 
     /// Every transfer, mint and burn flows through here in OZ v5.
     function _update(address from, address to, uint256 value) internal override {
+        // Settle dividends BEFORE balances move: a receiver seen at zero
+        // balance is new and must not inherit prior accruals.
+        address v = dividendVault;
+        if (v != address(0)) {
+            IDividendSync(v).onBalanceChange(from, to);
+        }
+
         // Mints, burns, and anything involving an exempt address: no tax.
         if (from == address(0) || to == address(0) || taxExempt[from] || taxExempt[to]) {
             super._update(from, to, value);

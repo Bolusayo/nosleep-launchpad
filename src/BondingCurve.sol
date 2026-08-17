@@ -312,6 +312,7 @@ contract BondingCurve is ReentrancyGuard {
             dividendVault = v;
             s.setDividendVault(address(v));
             token.setExempt(address(v), true);
+            token.setDividendVault(address(v));
             emit SplitterDeployed(address(s));
         } catch {}
     }
