@@ -1,0 +1,11 @@
+# Normalise line endings in the repository to LF. Working copies keep whatever
+# the local platform prefers, so Windows checkouts stay usable while CI (Linux)
+# and the repo itself stop disagreeing. Without this, every `forge fmt` run on
+# Windows reports every file as modified.
+* text=auto eol=lf
+
+# Binary and generated files: never touch.
+*.png binary
+*.jpg binary
+*.pdf binary
+*.gz binary
