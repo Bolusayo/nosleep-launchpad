@@ -6,18 +6,20 @@ reviewer can compare intent against implementation rather than inferring
 intent from implementation.
 
 - **Target chain:** Robinhood Chain (Arbitrum Orbit L2), chainId 4663 mainnet / 46630 testnet
-- **Solidity:** 0.8.28, `via_ir = true`, `optimizer_runs = 1`
+- **Solidity:** 0.8.28 (pinned), `via_ir = true`, `optimizer_runs = 1`
 - **Dependencies:** OpenZeppelin Contracts v5 (ERC20, ERC721, AccessControl, Ownable, ReentrancyGuard, SafeERC20, Math)
-- **External integration:** Uniswap V2 (Router02 + Factory), canonical deployment on 4663
+- **External integration:** Uniswap V2 (Factory + Pair; the Router is used only by `FeeSplitter`)
+- **Status:** not audited, not deployed to mainnet
 
 ---
 
 ## 1. System overview
 
 A permissionless memecoin launchpad. One transaction deploys a token, a
-bonding curve holding its entire supply, and optionally a tradeable referral
-NFT. Tokens sell on the curve until a fixed ETH target is reached, then
-migrate to a Uniswap V2 pool with liquidity permanently burned.
+bonding curve holding its entire supply, the Uniswap pair that token will
+eventually trade in, and optionally a tradeable referral NFT. Tokens sell on
+the curve until a fixed ETH target is reached, then the curve seeds the pool
+itself and burns the LP.
 
 ### Token lifecycle
 
@@ -25,26 +27,32 @@ migrate to a Uniswap V2 pool with liquidity permanently burned.
 createToken()
     │
     ├─ CurveDeployer.deploy() ──> BondingCurve
-    │                                 └─ constructor ──> MemeToken (100% supply to curve)
-    ├─ ReferralNFT.mintReferral()  (if a referrer was named)
+    │       ├─ constructor ──> MemeToken   (100% supply to the curve)
+    │       └─ constructor ──> factory.createPair(TOKEN, WETH)
+    │                          token.setDexPair(pair)   [pair now LOCKED]
+    ├─ ReferralNFT.mintReferral()      (only if a referrer was named)
     ├─ curve.setReferral()
-    └─ curve.buyFor()              (optional atomic dev buy, cap-exempt)
+    └─ curve.buyFor()                  (optional atomic dev buy, cap-exempt)
     │
     ▼
 BONDING PHASE
     buy()  — 80% of supply sells on a constant-product curve with virtual reserves
     sell() — reverse, same curve
-    2% fee on both sides; a slice goes to the referral NFT, the rest to the protocol
+    2% fee both sides; a slice to the referral NFT, the rest to the protocol
+    The pair exists but MemeToken rejects every transfer into it (PoolLocked)
     │
     ▼  (quoteReserve reaches VIRTUAL_QUOTE + QUOTE_TARGET)
 GRADUATION  (automatic, inside the buy that crosses the target)
-    ├─ router.addLiquidityETH(raise + remaining 20% of supply) ──> LP minted to 0x…dEaD
-    ├─ _registerPair()    — look up the CREATE2 pair, tell the token about it
-    └─ _deploySplitter()  — taxed tokens only: FeeSplitter + DividendVault
+    ├─ token.setPoolSeeded()            — unlocks the pair, one-way
+    ├─ WETH.deposit{value: raise}()     — wrap
+    ├─ WETH.transfer(pair, raise)
+    ├─ token.transfer(pair, 20% tranche)
+    ├─ pair.mint(0x…dEaD)               — LP burned on creation
+    └─ _deploySplitter()                — taxed tokens only
     │
     ▼
 POST-GRADUATION
-    Trading happens on Uniswap. Curve is inert.
+    Trading happens on Uniswap. The curve is inert.
     Taxed tokens: tax accrues to FeeSplitter, split four ways, pull-based.
 ```
 
@@ -52,17 +60,17 @@ POST-GRADUATION
 
 | Portion | Share | Destination |
 |---|---|---|
-| Curve supply | 80% | Sold to buyers during the bonding phase |
+| Curve supply | 80% (`CURVE_SHARE_BPS`) | Sold to buyers during the bonding phase |
 | Pool seed | 20% | Paired with the raise at graduation |
 
-`MIN_SUPPLY = 1_000_000`, `MAX_SUPPLY = 1_000_000_000_000` whole tokens (18 decimals).
+`MIN_SUPPLY = 1_000_000`, `MAX_SUPPLY = 1_000_000_000_000` whole tokens, 18 decimals.
 
 ---
 
 ## 2. Curve mathematics
 
 Constant-product AMM with **virtual reserves**, so no seed liquidity is needed
-and the curve reaches its target with a known, bounded price path.
+and the curve reaches its target along a known, bounded price path.
 
 At construction, with `s = curveSupply` (80% of total supply):
 
@@ -78,14 +86,13 @@ output reserve so rounding always favours the pool, never the trader.
 
 Graduation triggers when `quoteReserve >= VIRTUAL_QUOTE + QUOTE_TARGET`.
 
-`ethCollected()` is derived as `quoteReserve − VIRTUAL_QUOTE` and never stored.
+`ethCollected()` is derived as `quoteReserve − VIRTUAL_QUOTE`, never stored.
 
 ### Price multiple
 
-The curve shape is scale-invariant: whatever the supply, the price rises by a
-fixed **6.33×** from first buy to graduation
-(`1.1875 / 0.1875 = 6.3333…`). Supply choice changes the sticker price per
-token, not the economics.
+The curve shape is scale-invariant: whatever the supply, price rises by a fixed
+**6.33×** from first buy to graduation (`1.1875 / 0.1875`). Supply choice
+changes the sticker price per token, not the economics.
 
 ### Partial fill
 
@@ -97,25 +104,25 @@ room     = VIRTUAL_QUOTE + QUOTE_TARGET − quoteReserve
 grossMax = room · BPS / (BPS − FEE_BPS)
 ```
 
-Anything above `grossMax` is refunded to the buyer in the same transaction.
-This is why quoting must happen on-chain — see §8.
+Anything above `grossMax` is refunded in the same transaction. This is why
+quoting must happen on-chain — see §8.
 
 ---
 
 ## 3. Contract inventory
 
-| Contract | Lines | Responsibility |
-|---|---|---|
-| `BondingCurve` | 345 | Curve maths, trading, graduation, migration. Deploys its own token. |
-| `FeeSplitter` | 241 | Post-graduation tax, split four ways, pull-based execution. |
-| `LaunchpadFactory` | 174 | Entry point. Atomic launch + dev buy + referral mint. `Ownable`. |
-| `RewardsDistributor` | 153 | Multi-asset accumulator for Genesis NFT holders. **Not deployed — see §7.** |
-| `ReferralNFT` | 139 | ERC-721 referral rights with pull-based commission and transfer settlement. |
-| `MemeToken` | 132 | Fixed-supply ERC-20, optional asymmetric buy/sell tax. |
-| `DividendVault` | 92 | Self-mode proportional dividends in the token itself. |
-| `SplitterDeployer` | 53 | Bytecode isolation: holds FeeSplitter/DividendVault creation code. |
-| `CurveDeployer` | 61 | Bytecode isolation so the factory fits under EIP-170. |
-| `MockV2Router` | 111 | Testnet stand-in. **Not production. See §9.** |
+| Contract | Responsibility |
+|---|---|
+| `BondingCurve` | Curve maths, trading, graduation. Deploys its own token and creates its own pair. |
+| `MemeToken` | Fixed-supply ERC-20. Optional asymmetric buy/sell tax. Locks the pair until graduation. |
+| `FeeSplitter` | Post-graduation tax, split four ways, pull-based execution. |
+| `LaunchpadFactory` | Entry point. Atomic launch + dev buy + referral mint. `Ownable`. |
+| `ReferralNFT` | ERC-721 referral rights, pull-based commission, transfer settlement. |
+| `DividendVault` | Proportional dividends in the token itself, settled on transfer. |
+| `RewardsDistributor` | Multi-asset accumulator for Genesis NFT holders. **Not deployed — §7.** |
+| `CurveDeployer` | Bytecode isolation: holds `BondingCurve` creation code. |
+| `SplitterDeployer` | Bytecode isolation: holds `FeeSplitter`/`DividendVault` creation code. |
+| `MockV2Router` | Testnet and unit-test Uniswap stand-in. **Not production — §9.** |
 
 ---
 
@@ -130,8 +137,8 @@ This is why quoting must happen on-chain — see §8.
 - `RewardsDistributor.enroll`
 - `ReferralNFT.claim` / `claimSettled` (owner-gated per token, but unprivileged)
 
-Splitter operations are deliberately permissionless and separated so a
-failing swap can never block the split, and no logic runs inside a transfer.
+Splitter operations are deliberately permissionless and separated so a failing
+swap can never block the split, and no logic runs inside a transfer.
 
 ### Privileged
 
@@ -139,61 +146,71 @@ failing swap can never block the split, and no logic runs inside a transfer.
 |---|---|
 | `LaunchpadFactory` owner | `setDeployFee`, `setFeeRecipient` |
 | `ReferralNFT` `DEFAULT_ADMIN_ROLE` | Role administration |
-| `ReferralNFT` `MINTER_ROLE` (factory) | `mintReferral`; is role-admin for `CREDITOR_ROLE` |
+| `ReferralNFT` `MINTER_ROLE` (factory) | `mintReferral`; role-admin for `CREDITOR_ROLE` |
 | `ReferralNFT` `CREDITOR_ROLE` (each curve) | `credit`, `markMigrated` |
 | `RewardsDistributor` `DEPOSITOR_ROLE` | `depositEth`, `depositToken` |
-| `MemeToken` `curve` (immutable) | `setDexPair`, `setTaxCollector`, `setExempt` |
+| `MemeToken` `curve` (immutable) | `setDexPair`, `setPoolSeeded`, `setTaxCollector`, `setDividendVault`, `setExempt` |
 | `FeeSplitter` `deployer` (the SplitterDeployer) | `setDividendVault` (once, during deployment) |
 | `BondingCurve` `factory` (immutable) | `setReferral` (once), `buyFor` |
 
 **No contract is upgradeable. No contract has an owner-withdraw or rescue
-function.** Once deployed, curve and token behaviour is fixed.
+function.** Once deployed, curve and token behaviour is fixed. Anything
+stranded is stranded permanently — which is why the graduation path is written
+to strand nothing.
+
+### One-way state flags
+
+| Flag | Set by | Effect |
+|---|---|---|
+| `BondingCurve.graduated` | itself, at target | Curve stops trading |
+| `MemeToken.poolSeeded` | the curve, at graduation | Unlocks transfers into `dexPair` |
+| `MemeToken.dexPair` | the curve, at construction | Set once; identifies the pair |
 
 ### Deliberate never-revert paths
 
-Three sites swallow failures on purpose, because a revert would be worse than
+Two sites swallow failures on purpose, because a revert would be worse than
 the degraded state:
 
 | Site | On failure | Rationale |
 |---|---|---|
 | `BondingCurve._payFee` | Referral cut redirected to protocol | A bad NFT must not brick trading |
-| `BondingCurve._registerPair` | No pair registered → no post-graduation tax | Better than a stuck curve |
 | `BondingCurve._deploySplitter` | Tax keeps accruing to the curve | Recoverable; a revert would strand the raise |
 
-By contrast, `addLiquidityETH` failure **does** revert (`MigrationFailed`) so
-the raise is never stranded in a half-migrated state.
+By contrast the pool seed **does** revert (`MigrationFailed`) if `pair.mint`
+fails or returns zero, so the raise is never half-migrated.
 
 ---
 
 ## 5. Invariants
 
-### Fuzz-tested (in suite)
+### Fuzz-tested
 
-1. **Target exactness** — the curve raises exactly `QUOTE_TARGET`, regardless of how buys are chunked. (`testFuzz_AlwaysGraduatesAtTarget`)
-2. **Quote fidelity** — `quoteBuy(x)` equals the tokens actually received when buying with `x`, exactly. (`testFuzz_QuoteMatchesActualBuy`)
-3. **No referral leakage** — no value is lost or duplicated across the NFT transfer-settle path. (`testFuzz_NoValueLeaks`)
-4. **Dividends never overpay** — total claimed never exceeds total deposited. (`testFuzz_NeverOverPays`) — **weak: unfalsifiable, see §7 item 6. The real property is `sum(pending) <= balanceOf(vault)`, covered in `test/DividendVaultLateEntrant.t.sol`.**
-5. **Split conservation** — the four-way split sums to the input. (`testFuzz_SplitConservesTotal`)
-6. **Tax ceiling** — tax never exceeds the configured rate. (`testFuzz_TaxNeverExceedsRate`)
+1. **Target exactness** — the curve raises exactly `QUOTE_TARGET`, however buys are chunked. (`testFuzz_AlwaysGraduatesAtTarget`)
+2. **Quote fidelity** — `quoteBuy(x)` equals the tokens actually received. (`testFuzz_QuoteMatchesActualBuy`)
+3. **No referral leakage** — no value lost or duplicated across the NFT transfer-settle path. (`testFuzz_NoValueLeaks`)
+4. **Split conservation** — the four-way split sums to the input. (`testFuzz_SplitConservesTotal`)
+5. **Tax ceiling** — tax never exceeds the configured rate. (`testFuzz_TaxNeverExceedsRate`)
+6. `testFuzz_NeverOverPays` asserts `totalClaimed <= totalDeposited`. **This invariant is unfalsifiable** — `safeTransfer` reverts before an overpay is possible. It passed through a real solvency bug. Kept only as a regression tripwire; the meaningful property is 14 below.
 
-### Asserted but not fuzzed
+### Asserted, including against real Uniswap on a mainnet fork
 
 7. **Post-graduation cleanliness** — the curve holds zero ETH and zero tokens.
 8. **LP is always burned** — all LP except Uniswap's `MINIMUM_LIQUIDITY` (1000 wei) goes to `0x…dEaD`. Nobody, including creator and protocol, ever holds LP.
-9. **LP amount is the geometric mean** — `lpAmount == sqrt(ethForLp · tokensForLp) − 1000`. Verified against real Uniswap on a mainnet fork, exact to the wei.
-10. **Pool seed is untaxed** — the full 20% tranche reaches the pair. The router is marked exempt before `addLiquidityETH`, and `setDexPair` runs *after* migration, so the seed is not classified as a sell.
-11. **Registered pair is the real pair** — `token.dexPair() == factory.getPair(token, WETH)`. Verified against real CREATE2 on a fork.
-12. **Curve trades are untaxed** — the curve is exempt from construction.
-13. **Wallet-to-wallet is untaxed** — only transfers to/from `dexPair` are taxed.
-14. **Referral commission follows the NFT** — future commissions accrue to the current holder; accrued-but-unclaimed amounts settle to the seller on transfer.
-15. **No late-entrant exploitation in `RewardsDistributor`** — enrolment snapshots every known asset's accumulator, so a new Genesis NFT cannot claim pre-enrolment deposits.
-16. **No late-entrant exploitation in `DividendVault`** — a wallet acquiring tokens after a deposit earns nothing from it, and the vault never owes more than it holds. Enforced by the settle-on-transfer hook, §7 item 6.
+9. **LP amount is the geometric mean** — `lpAmount == sqrt(ethForLp · tokensForLp) − 1000`, exact to the wei on a mainnet fork.
+10. **The pool receives the full raise and the full tranche** — as WETH and tokens respectively.
+11. **The pool seed is untaxed** — the curve is exempt from construction, so its seed transfer is not classified as a sell.
+12. **The pair cannot be front-run** — it is created with the curve, so `createPair` reverts `PAIR_EXISTS` for anyone else, and `PoolLocked` rejects every transfer into it until graduation.
+13. **Registered pair is the real pair** — `token.dexPair() == factory.getPair(token, WETH)`.
+14. **Dividend solvency** — a wallet acquiring tokens after a deposit earns nothing from it, and `sum(pending) <= balanceOf(vault)`.
+15. **Curve trades are untaxed**; **wallet-to-wallet is untaxed**; only transfers to/from `dexPair` are taxed.
+16. **Referral commission follows the NFT** — future commissions accrue to the current holder; accrued-but-unclaimed settles to the seller on transfer.
+17. **No late-entrant exploitation in `RewardsDistributor`** — enrolment snapshots every known asset's accumulator.
 
 ### Intended but unstated in code
 
-16. `purchased[]` never decreases — selling does not restore wallet-cap headroom. This is deliberate anti-snipe behaviour; a consequence is that a capped buyer who sells cannot re-buy.
-17. Tax applies only while `taxActive()`; `taxDurationDays == 0` means forever.
-18. `MAX_TAX_BPS = 1000` (10%) is a hard per-side ceiling enforced at construction.
+18. `purchased[]` never decreases — selling does not restore wallet-cap headroom. Deliberate anti-snipe behaviour; a consequence is that a capped buyer who sells cannot re-buy.
+19. Tax applies only while `taxActive()`; `taxDurationDays == 0` means forever.
+20. `MAX_TAX_BPS = 1000` (10%) is a hard per-side ceiling enforced at construction.
 
 ---
 
@@ -203,8 +220,8 @@ the raise is never stranded in a half-migrated state.
 
 ```
 fee = 2% of gross
-  ├─ referralBps (default 10% of the fee) ──> ReferralNFT.credit(id)  [pending → holder]
-  └─ remainder ──────────────────────────────> feeRecipient
+  ├─ referralBps (10% of the fee) ──> ReferralNFT.credit(id)   [pending → holder]
+  └─ remainder ────────────────────> feeRecipient
 ```
 
 If `credit` reverts, the whole fee goes to `feeRecipient`.
@@ -212,12 +229,12 @@ If `credit` reverts, the whole fee goes to `feeRecipient`.
 ### Post-graduation — optional token tax
 
 Asymmetric buy/sell tax (≤10% per side), collected in-token to the
-`FeeSplitter`, then split on `process()`:
+`FeeSplitter`, split on `process()`:
 
 ```
 accumulated tax
   ├─ liquidityBps  ──> addLiquidity()  — half swapped to ETH, paired, LP burned
-  ├─ burnBps       ──> transfer to 0x…dEaD  (immediately, or held for a window)
+  ├─ burnBps       ──> transfer to 0x…dEaD
   ├─ marketingBps  ──> payMarketing()  — swapped to ETH, forwarded
   └─ dividendBps   ──> payDividends()  — forwarded to DividendVault
 ```
@@ -226,154 +243,187 @@ The four must sum to exactly 10,000 bps or `FeeSplitter` construction reverts
 (and `_deploySplitter` silently skips).
 
 **Allocation accounting:** `process()` operates on
-`balanceOf(this) − allocated()`, where `allocated()` is the sum of all four
-tracked pools. This prevents already-earmarked tokens from being re-split.
+`balanceOf(this) − allocated()`, preventing already-earmarked tokens from being
+re-split.
 
-**Burn modes:** `Threshold` burns on every `process()`. `Weekly`/`Monthly`
-hold the tranche in `pendingBurn` until `burnDue()`, released by `executeBurn()`.
-**Only `Threshold` is reachable in production — see §7.**
+**Burn modes:** `Threshold` burns on every `process()`. `Weekly`/`Monthly` hold
+the tranche until `burnDue()`. **Only `Threshold` is reachable — §7.**
 
 ---
 
-## 7. Known gaps and accepted risks
+## 7. Known gaps, accepted risks, and resolved findings
 
 Stated explicitly so audit hours aren't spent rediscovering them.
 
+### Resolved findings, recorded because the fixes are structural
+
+**7.1 — Graduation was permanently blockable by anyone (critical, fixed).**
+
+`_graduate` called `addLiquidityETH`, which quotes against whatever reserves
+already exist and enforces a ratio against the caller's minimums (90%). An
+attacker could buy tokens on the curve, create the TOKEN/WETH pair, seed it
+with dust at an absurd price, and every subsequent graduation attempt would
+revert `INSUFFICIENT_A_AMOUNT` → `MigrationFailed` → the graduating buy itself
+reverts. The curve then sits permanently below target and the token can never
+graduate. No admin can fix it. Holders can still `sell()`, so funds are not
+stolen, but the launch is dead. Cost to the attacker: gas and a dust seed,
+most of it recoverable.
+
+Loosening the slippage floor was worse, not better: the attacker would then
+dictate the opening price and skim the raise.
+
+*Fix, in two halves.* The curve creates the pair in its own constructor, so
+there is nothing left to race for. `MemeToken` then rejects every transfer
+into that pair (`PoolLocked`) until the curve calls `setPoolSeeded()` at
+graduation. Graduation wraps ETH, sends both sides to the pair, and calls
+`pair.mint(BURN)` directly — taking the opening price from its own amounts
+rather than negotiating with whatever is there.
+
+The empty-pair guarantee is what makes the direct mint safe. If a griefer
+could put tokens in early they would already hold LP, and `mint` would hand
+them a proportional share of the raise. Donated *WETH* is still possible but
+only increases the liquidity minted and burned.
+
+*Reviewer attention:* this is the newest and most safety-critical change in
+the system. `_registerPair` is gone; the router is no longer on the graduation
+path and no longer needs a tax exemption.
+
+*Coverage:* `test/ForkFrontrunGraduation.t.sol` (6 tests against real Uniswap).
+
+**7.2 — `DividendVault` late-entrant insolvency (critical, fixed).**
+
+`pending()` multiplied the holder's current balance by
+`accPerToken - rewardDebt`, and `rewardDebt` was only written on claim
+(`initialised` defaulted false → debt 0). A wallet acquiring tokens after
+deposits had accrued appeared owed the entire historical per-token amount.
+Independently, `eligibleSupply()` excludes `dexPair`, so buying from the pool
+moved tokens from an excluded holder to an eligible one, growing eligible
+supply after `accPerToken` was fixed against a smaller denominator —
+amplifying the first cause roughly 4×.
+
+*Impact.* Against a 1,000,000-token deposit with 490M eligible supply, a wallet
+buying 400M from the pool afterwards showed 791,836 owed. Total owed across
+three holders reached 1,199,999 — 120% of deposits. It did not surface as an
+overpay but as an honest holder's `claim()` reverting with
+`ERC20InsufficientBalance` once the pool ran dry. Extractable by watching for
+`payDividends()`, buying, claiming, selling.
+
+*Fix.* `MemeToken._update` calls `DividendVault.onBalanceChange` before any
+balance moves. A receiver observed at zero balance is new and has `rewardDebt`
+snapshotted to the current accumulator; a sender banks what it earned into
+`claimable` before its balance drops. Same settle-on-transfer pattern as
+`ReferralNFT._update`. Post-fix, total owed for that scenario is 408,163.
+
+*Coverage:* `test/DividendVaultLateEntrant.t.sol` (6 tests).
+
 ### Functional gaps
 
-1. **`markMigrated` is never called in production.** No production code path
-   invokes it — only tests do. Consequently no referral ever reaches
-   `Status.Genesis`, `genesisNumber` stays 0, and
-   `RewardsDistributor.enroll()` always reverts `NotGenesis`. **The entire
-   Genesis rewards pipeline is unreachable on-chain.**
+**7.3 — `markMigrated` is never called in production.** No production path
+invokes it; only tests do. No referral therefore reaches `Status.Genesis`,
+`genesisNumber` stays 0, and `RewardsDistributor.enroll()` always reverts
+`NotGenesis`. **The entire Genesis rewards pipeline is unreachable on-chain.**
 
-2. **`RewardsDistributor` is not deployed.** Neither deploy script references
-   it, and `DEPOSITOR_ROLE` is granted only in tests. It is fully written and
-   has 11 passing tests, but nothing on-chain can deposit to it or claim from
-   it. Decide whether to wire it or declare it out of scope.
+**7.4 — `RewardsDistributor` is not deployed.** Neither deploy script
+references it, and `DEPOSITOR_ROLE` is granted only in tests. Fully written,
+11 passing tests, nothing on-chain can reach it. See §9 scope decision.
 
-3. **Burn mode is hardcoded.** `_deploySplitter` always passes
-   `BurnMode.Threshold`. `Weekly`/`Monthly` work in `FeeSplitter` but are
-   unreachable from a launch.
+**7.5 — Burn mode is hardcoded** to `BurnMode.Threshold` in `_deploySplitter`.
+`Weekly`/`Monthly` work in `FeeSplitter` but are unreachable from a launch.
 
-4. **Splitter threshold is hardcoded** at `curveSupply / 10_000` (0.01%).
+**7.6 — Splitter threshold is hardcoded** at `curveSupply / 10_000` (0.01%).
 
-5. **Three of four dividend payout modes are unbuilt.** Only self-mode
-   (claim in the token itself) exists.
+**7.7 — Three of four dividend payout modes are unbuilt.** Only self-mode
+(claim in the token itself) exists.
+
+**7.8 — `referralCommissionBps` has no setter.** It is a public state variable
+initialised to 1000 with no way to change it. Either make it `constant` or add
+a setter; as written it costs a storage read while behaving like a constant.
 
 ### Areas needing review attention
 
-6. **`DividendVault` late-entrant insolvency — FOUND AND FIXED.**
-   Confirmed vulnerability, reproduced, patched. Recorded here in full because
-   the fix is structural and a reviewer should verify it.
+**7.9 — `FeeSplitter.addLiquidity` passes `0, 0`** as
+`amountTokenMin`/`amountETHMin` to `addLiquidityETH`, accepting whatever ratio
+the pool offers. The preceding swap is protected by `minEthOut`; the liquidity
+add is not. This is the *router* path used post-graduation, distinct from the
+graduation seed (§7.1) which no longer uses the router at all.
 
-   *Cause.* `pending()` multiplied the holder's current balance by
-   `accPerToken - rewardDebt`, and `rewardDebt` was only written on claim
-   (`initialised` defaulted false, so debt read as 0). A wallet acquiring
-   tokens after deposits had accrued appeared owed the entire historical
-   per-token amount. Independently, `eligibleSupply()` excludes `dexPair`, so
-   buying from the pool moved tokens from an excluded holder to an eligible
-   one — growing eligible supply after `accPerToken` was fixed against a
-   smaller denominator, amplifying the first cause roughly 4x.
+**7.10 — `ReferralNFT.credit(id)` does not verify** that `id` belongs to the
+calling curve. Any `CREDITOR_ROLE` holder can credit any id. Only
+factory-deployed curves hold the role and each credits only its own id, so
+this is defence-in-depth rather than a live issue — but the check is absent.
 
-   *Impact.* Against a 1 ETH-equivalent deposit with 490M eligible supply, a
-   wallet buying 400M from the pool afterwards showed 791,836 owed on a
-   1,000,000 deposit. Total owed across three holders reached 1,199,999 —
-   120% of deposits. The overpayment did not surface as an overpay: it
-   surfaced as an honest holder's `claim()` reverting with
-   `ERC20InsufficientBalance` once the pool ran dry. Extractable by watching
-   for `payDividends()`, buying, claiming, and selling.
+**7.11 — `block.timestamp` comparisons** in `FeeSplitter.burnDue()` and
+`MemeToken.taxActive()`. Both tolerate seconds of drift by design.
 
-   *Why the suite missed it.* `testFuzz_NeverOverPays` asserts
-   `totalClaimed <= totalDeposited`, which `safeTransfer` makes unfalsifiable —
-   the transfer reverts before an overpay is physically possible. It also only
-   let two holders claim (200M of 490M eligible), with the curve silently
-   holding 290M it never claimed, leaving ~59% slack. The meaningful invariant
-   is `sum(pending) <= balanceOf(vault)`.
+**7.12 — Unbounded `assets` array** in `RewardsDistributor`. `enroll()` and
+`claimAll()` loop over it. Growth is gated by `DEPOSITOR_ROLE`, so it is
+trusted-party bounded, not attacker bounded.
 
-   *Fix.* `MemeToken._update` now calls `DividendVault.onBalanceChange` before
-   any balance moves. A receiver observed at zero balance is new and has its
-   `rewardDebt` snapshotted to the current accumulator, so it earns nothing
-   retroactively; a sender banks what it earned at the higher balance into
-   `claimable` before the balance drops. Same settle-on-transfer pattern as
-   `ReferralNFT._update`. Post-fix, total owed for the scenario above is
-   408,163 against 1,000,000 deposited.
-
-   *Coverage.* `test/DividendVaultLateEntrant.t.sol`, 6 tests, including one
-   that isolates the `rewardDebt` cause with eligible supply held constant.
-
-   *Cost.* The fix added ~1,900 bytes, pushing `CurveDeployer` 934 bytes past
-   EIP-170. Resolved by extracting `SplitterDeployer` (see §8). Every taxed
-   token transfer now also pays for an external call to the vault.
-
-7. **`FeeSplitter.addLiquidity` passes `0, 0`** as `amountTokenMin`/`amountETHMin`
-   to `addLiquidityETH`, accepting whatever ratio the pool offers. The
-   preceding swap is protected by `minEthOut`, the liquidity add is not.
-
-8. **`ReferralNFT.credit(id)` does not verify** that `id` belongs to the
-   calling curve. Any `CREDITOR_ROLE` holder can credit any id. Currently only
-   factory-deployed curves hold the role and each credits only its own id, so
-   this is defence-in-depth rather than a live issue — but the check is absent.
-
-9. **`block.timestamp` comparisons** in `FeeSplitter.burnDue()` and
-   `MemeToken.taxActive()`. Both tolerate seconds of drift by design.
-
-10. **Unbounded `assets` array** in `RewardsDistributor`. `enroll()` and
-    `claimAll()` loop over it. Growth is gated by `DEPOSITOR_ROLE`, so it is
-    trusted-party bounded, not attacker bounded.
+**7.13 — The token→vault callback** in `MemeToken._update` is the only place a
+token transfer reaches back into launchpad state. It is not reentrancy-guarded,
+deliberately: it runs inside a transfer that may itself sit inside a guarded
+`claim()`. Access control is the `msg.sender == token` check.
 
 ### Operational constraints
 
-11. **EIP-170 headroom.** `CurveDeployer` sits at 16,427 / 24,576 bytes —
-    8,149 spare after the `SplitterDeployer` extraction. `SplitterDeployer`
-    itself is at 10,282 with 14,294 spare. Changes to `BondingCurve` or
-    `MemeToken` move the first figure; changes to `FeeSplitter` or
-    `DividendVault` move the second. `forge build --sizes` exits non-zero on
-    overflow and runs in CI, so this is now enforced rather than remembered.
-    `via_ir` and the optimizer are required to compile at all.
+**7.14 — EIP-170 headroom.** `CurveDeployer` sits at 16,941 / 24,576 bytes.
+`SplitterDeployer` is separate. `forge build --sizes` exits non-zero on
+overflow and runs in CI, so this is enforced rather than remembered. `via_ir`
+and the optimizer are required to compile at all.
 
-12. **`optimizer_runs = 1`.** Tuned for deployment size, not runtime gas, to
-    stay under EIP-170. Every user transaction pays for this.
+**7.15 — `optimizer_runs = 1`.** Tuned for deployment size, not runtime gas.
+Every user transaction pays for this.
 
-13. **Taxed tokens cost ~22% more gas per transfer**, because the `_update`
-    override runs even at zero tax.
+**7.16 — Taxed tokens cost more per transfer.** The `_update` override runs
+even at zero tax, and once a vault exists each transfer makes an external call
+to it.
 
-14. **`PUSH0` / EIP-3855 support on Robinhood Chain is unconfirmed.** Foundry
-    warns; deploys succeed.
+**7.17 — `PUSH0` / EIP-3855 support on Robinhood Chain is unconfirmed.**
+Foundry warns; deploys succeed.
+
+### Product decisions with security-adjacent consequences
+
+**7.18 — LP is burned, not locked.** Competing launchpads on this chain use
+Uniswap v3 and lock the position in a no-withdraw locker, so it keeps earning
+swap fees for the creator indefinitely. Burning to `0x…dEaD` is equally
+unruggable but earns nothing. This is a deliberate V2 choice, not an oversight,
+and changing it would mean rewriting the graduation path around the v3 position
+manager.
 
 ---
 
 ## 8. Design decisions worth knowing
 
+**Graduation mints directly; the router is not involved.** See §7.1. The
+router remains a dependency only of `FeeSplitter`.
+
+**The pair is created eagerly, at curve construction.** This costs gas on
+every launch whether or not the token ever graduates. It buys the front-run
+immunity in §7.1, and on an L2 the cost is a fraction of a cent.
+
+**`MemeToken` stays inside `BondingCurve`'s constructor.** Moving its
+deployment out (as was done for `FeeSplitter`/`DividendVault`) would mean
+either passing in a pre-deployed token or a two-step init, both of which weaken
+the guarantee that `MemeToken.curve` is immutable and the curve holds 100% of
+supply from block one.
+
 **Quoting is on-chain.** `quoteBuy`/`quoteSell` are view functions on the
 curve. An earlier JavaScript reimplementation drifted from the contract —
-specifically it ignored the `grossMax` partial-fill cap — producing
-slippage mismatches. Frontends must not reimplement curve maths.
+specifically it ignored the `grossMax` partial-fill cap — producing slippage
+mismatches. Frontends must not reimplement curve maths.
 
-**LP burns to `0x…dEaD`, not `address(0)`.** OpenZeppelin v5 rejects
-minting to the zero address, which reverts graduation.
+**LP burns to `0x…dEaD`, not `address(0)`.** OpenZeppelin v5 rejects minting
+to the zero address, which would revert graduation.
 
 **Bytecode isolation, twice.** `LaunchpadFactory` exceeded EIP-170 once it
-embedded `BondingCurve`'s creation code, hence `CurveDeployer`. Later,
-`BondingCurve` exceeded it in turn — it embedded creation code for
-`MemeToken`, `FeeSplitter` *and* `DividendVault` — hence `SplitterDeployer`,
-which took the latter two out and recovered ~9,000 bytes.
+embedded `BondingCurve`'s creation code, hence `CurveDeployer`. Later
+`BondingCurve` exceeded it in turn, hence `SplitterDeployer`. Deploy order is
+load-bearing: `CurveDeployer` and `SplitterDeployer` → `LaunchpadFactory`
+(takes both) → `deployer.setFactory()`.
 
-`MemeToken` deliberately stayed inside `BondingCurve`'s constructor: moving it
-would mean either passing in a pre-deployed token or a two-step init, both of
-which weaken the guarantee that `MemeToken.curve` is immutable and the curve
-holds 100% of supply from block one.
-
-Deploy order is load-bearing: `CurveDeployer` and `SplitterDeployer` →
-`LaunchpadFactory` (takes both) → `deployer.setFactory()`.
-
-Because `SplitterDeployer` deploys the `FeeSplitter`, it — not the curve — is
-recorded as that splitter's `deployer` and is what calls `setDividendVault`.
-It does so before returning, so the curve receives a fully wired pair.
-
-**Enrolment snapshots in `RewardsDistributor`.** New entrants inherit the
-current accumulator as debt for every known asset, so they cannot claim
-against deposits that predate them.
+**Enrolment snapshots in `RewardsDistributor`, settle-on-transfer in
+`DividendVault`.** Two different solutions to the same late-entrant problem,
+because the NFT has a natural enrolment moment and the ERC-20 does not.
 
 ---
 
@@ -381,39 +431,42 @@ against deposits that predate them.
 
 ### In scope
 
-`src/BondingCurve.sol`, `src/CurveDeployer.sol`, `src/SplitterDeployer.sol`,
-`src/DividendVault.sol`, `src/FeeSplitter.sol`, `src/LaunchpadFactory.sol`,
-`src/MemeToken.sol`, `src/ReferralNFT.sol`,
+`src/BondingCurve.sol`, `src/MemeToken.sol`, `src/CurveDeployer.sol`,
+`src/SplitterDeployer.sol`, `src/DividendVault.sol`, `src/FeeSplitter.sol`,
+`src/LaunchpadFactory.sol`, `src/ReferralNFT.sol`,
 `src/interfaces/IUniswapV2Router.sol`
 
-Reviewers should pay particular attention to the settle-on-transfer hook
-between `MemeToken` and `DividendVault` (§7 item 6). It is recent, it runs on
-every transfer of every taxed token, and it is the only place a token
-callback reaches back into launchpad state.
+**Priority areas**, both recent and both safety-critical:
+
+1. The graduation path (§7.1) — eager pair creation, the `PoolLocked` guard,
+   and the direct `pair.mint`. This replaced a confirmed critical bug and is
+   the least-aged code in the system.
+2. The token→vault settle-on-transfer callback (§7.2, §7.13) — it runs on
+   every transfer of every taxed token.
 
 ### Out of scope
 
 - `src/mocks/MockV2Router.sol` — test fixture, never deployed to mainnet.
-  Note it returns an `lpAmount` roughly 100× smaller than the geometric mean;
-  the mock is wrong, the production path is correct (invariant 9).
 - The frontend (`index.html`, `app.js`).
-- Uniswap V2 itself.
-- OpenZeppelin v5.
+- Uniswap V2 itself; OpenZeppelin v5.
 
 ### Scope decision required
 
-`src/RewardsDistributor.sol` — built and tested but unreachable (§7 items 1–2).
+`src/RewardsDistributor.sol` — built and tested but unreachable (§7.3–7.4).
 Either wire it before audit or exclude it. Auditing dead code is wasted spend.
 
 ### Prior verification already performed
 
-- 101 tests passing, 9 suites, 6 fuzz invariants.
-- `test/ForkGraduation.t.sol` — 8 tests against the **real** Uniswap V2
-  deployment on a mainnet fork, covering LP accounting, CREATE2 pair
-  registration, pool-seed tax exemption, and a post-graduation taxed sell.
-- Full end-to-end dividend pipeline verified on testnet.
+- **101 unit tests**, 9 suites, 6 fuzz invariants.
+- **14 fork tests** against the real Uniswap V2 deployment on a mainnet fork:
+  `test/ForkGraduation.t.sol` (LP accounting, CREATE2 pair registration,
+  pool-seed tax exemption, post-graduation taxed sell) and
+  `test/ForkFrontrunGraduation.t.sol` (front-run immunity).
+- Two critical bugs found in-house, reproduced, and fixed — §7.1 and §7.2.
 - Uniswap addresses verified three ways: official deployments doc, on-chain
   bytecode, live `WETH()` call.
+- CI enforces `forge fmt --check`, `forge build --sizes`, the unit suite, and
+  the fork suite against a pinned block.
 
 ### Deployment addresses (mainnet, chainId 4663)
 
@@ -422,3 +475,7 @@ Either wire it before audit or exclude it. Auditing dead code is wasted spend.
 | UniswapV2Router02 | `0x89e5DB8B5aA49aA85AC63f691524311AEB649eba` |
 | UniswapV2Factory | `0x8bcEaA40B9AcdfAedF85AdF4FF01F5Ad6517937f` |
 | WETH | `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73` |
+
+`DeployMainnet.s.sol` guards on `block.chainid == 4663` and locks the factory
+at a 1000 ETH `deployFee` immediately after deployment, so the launchpad is
+inert until deliberately opened.
