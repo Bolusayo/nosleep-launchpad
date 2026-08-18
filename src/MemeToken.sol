@@ -31,6 +31,17 @@ contract MemeToken is ERC20 {
     /// Set once by the curve at graduation so the pair can be marked.
     address public dexPair;
 
+    /// False until the curve seeds the pool at graduation. While false, no
+    /// transfer into `dexPair` is allowed.
+    ///
+    /// The pair is created up front, at curve construction, so that graduation
+    /// can mint the opening position directly instead of asking the router to
+    /// quote against whatever is already in the pool. That is only safe if the
+    /// pair is guaranteed empty beforehand: a griefer who could put tokens in
+    /// early would already hold LP, and the mint would hand them a share of
+    /// the raise. This flag is the guarantee.
+    bool public poolSeeded;
+
     /// Where tax goes. The curve during the bonding phase, the splitter after.
     address public taxCollector;
 
@@ -46,6 +57,7 @@ contract MemeToken is ERC20 {
     error TaxTooHigh(uint16 given);
     error NotCurve();
     error PairAlreadySet();
+    error PoolLocked();
     error VaultAlreadySet();
 
     constructor(
@@ -100,6 +112,13 @@ contract MemeToken is ERC20 {
         taxExempt[collector] = true;
     }
 
+    /// Opens the pool. Curve-only, called immediately before the seed
+    /// transfer at graduation. One-way.
+    function setPoolSeeded() external {
+        if (msg.sender != curve) revert NotCurve();
+        poolSeeded = true;
+    }
+
     /// Wires the dividend vault. Curve-only, once, at graduation.
     function setDividendVault(address vault) external {
         if (msg.sender != curve) revert NotCurve();
@@ -123,6 +142,10 @@ contract MemeToken is ERC20 {
         if (v != address(0)) {
             IDividendSync(v).onBalanceChange(from, to);
         }
+
+        // Nothing may enter the pair until the curve seeds it. Without this
+        // the direct mint at graduation is exploitable -- see poolSeeded.
+        if (!poolSeeded && to != address(0) && to == dexPair) revert PoolLocked();
 
         // Mints, burns, and anything involving an exempt address: no tax.
         if (from == address(0) || to == address(0) || taxExempt[from] || taxExempt[to]) {

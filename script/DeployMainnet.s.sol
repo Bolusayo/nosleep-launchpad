@@ -31,12 +31,28 @@ contract DeployMainnet is Script {
 
         nft.grantRole(nft.MINTER_ROLE(), address(factory));
 
+        // Deploy locked. createToken() is permissionless, so an unlocked
+        // factory on mainnet is a live financial product anyone can launch on
+        // and anyone can put money into -- before audit, before legal review,
+        // with no pause and no rescue function anywhere in the system.
+        //
+        // Nobody pays 1000 ETH to launch. To run a test:
+        //   cast send $FACTORY "setDeployFee(uint256)" 2000000000000000 ...
+        //   ... launch, test ...
+        //   cast send $FACTORY "setDeployFee(uint256)" 1000000000000000000000 ...
+        //
+        // Remove this line only when the audit and legal review are done.
+        factory.setDeployFee(1000 ether);
+
         vm.stopBroadcast();
 
         console.log("ReferralNFT:      ", address(nft));
         console.log("LaunchpadFactory: ", address(factory));
         console.log("Router (real):    ", ROUTER);
         console.log("CurveDeployer:    ", address(deployer));
+        console.log("");
+        console.log("FACTORY IS LOCKED: deployFee = 1000 ETH.");
+        console.log("Owner and feeRecipient are both:", me);
         console.log("SplitterDeployer: ", address(splitterDeployer));
     }
 }

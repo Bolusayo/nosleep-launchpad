@@ -219,7 +219,9 @@ contract ForkGraduationTest is Test {
         BondingCurve taxed = _newTaxedCurve();
         MemeToken tt = taxed.token();
 
-        assertEq(tt.dexPair(), address(0), "no pair before graduation");
+        // Created at construction so graduation can mint into it directly.
+        assertTrue(tt.dexPair() != address(0), "pair exists from construction");
+        assertFalse(tt.poolSeeded(), "pool stays locked until graduation");
         assertTrue(tt.taxActive());
 
         vm.prank(alice);
@@ -239,7 +241,9 @@ contract ForkGraduationTest is Test {
         assertTrue(registered != address(0), "pair must be registered on the token");
         assertEq(registered, actual, "registered pair must be the real CREATE2 pair");
 
-        assertTrue(tt.taxExempt(ROUTER), "router must be exempt");
+        // The router is no longer on the graduation path -- the curve wraps
+        // ETH and transfers to the pair itself -- so it needs no exemption.
+        assertTrue(tt.poolSeeded(), "pool must be open after graduation");
     }
 
     /// The critical ordering property: the initial pool seed must NOT be taxed.
