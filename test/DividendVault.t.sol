@@ -24,6 +24,8 @@ contract DividendVaultTest is Test {
 
         vm.prank(curve);
         token.setDexPair(pair);
+        vm.prank(curve);
+        token.setPoolSeeded();
 
         address[] memory ex = new address[](1);
         ex[0] = pair;

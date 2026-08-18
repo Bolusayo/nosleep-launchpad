@@ -21,6 +21,8 @@ contract MemeTokenTaxTest is Test {
 
         vm.prank(curve);
         token.setDexPair(pair);
+        vm.prank(curve);
+        token.setPoolSeeded();
 
         // Seed alice and the pair from the curve (exempt, so untaxed).
         vm.startPrank(curve);

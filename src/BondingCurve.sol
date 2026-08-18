@@ -10,7 +10,7 @@ import {FeeSplitter} from "./FeeSplitter.sol";
 import {DividendVault} from "./DividendVault.sol";
 import {ReferralNFT} from "./ReferralNFT.sol";
 import {SplitterDeployer} from "./SplitterDeployer.sol";
-import {IUniswapV2Router, IUniswapV2Factory} from "./interfaces/IUniswapV2Router.sol";
+import {IUniswapV2Router, IUniswapV2Factory, IUniswapV2Pair, IWETH} from "./interfaces/IUniswapV2Router.sol";
 
 /// @notice Constant-product bonding curve with virtual reserves.
 ///         Deploys its own token and holds 100% of the supply:
@@ -114,6 +114,19 @@ contract BondingCurve is ReentrancyGuard {
         tokenReserve = s + (VIRTUAL_QUOTE * s) / QUOTE_TARGET;
 
         maxBuyPerWallet = capBps == 0 ? 0 : (s * capBps) / BPS;
+
+        // Create the pair now, while the token supply is entirely ours and
+        // nothing can have entered the pool. MemeToken then refuses transfers
+        // into it until we seed it at graduation, which is what makes the
+        // direct mint safe.
+        if (router_ != address(0)) {
+            address f_ = IUniswapV2Router(router_).factory();
+            address w_ = IUniswapV2Router(router_).WETH();
+            address p_ = IUniswapV2Factory(f_).getPair(address(token), w_);
+            if (p_ == address(0)) p_ = IUniswapV2Factory(f_).createPair(address(token), w_);
+            lpToken = p_;
+            token.setDexPair(p_);
+        }
     }
 
     /// Real ETH held for the graduation pool. Derived, never stored.
@@ -252,39 +265,43 @@ contract BondingCurve is ReentrancyGuard {
 
         if (address(router) == address(0) || ethForLp == 0 || tokensForLp == 0) return;
 
-        // The router must be exempt: it holds tokens briefly between the
-        // transferFrom and the pair deposit, and a tax there would seed the
-        // pool short and trip the slippage guard.
-        token.setExempt(address(router), true);
+        address pair = lpToken;
+        if (pair == address(0)) return;
 
-        IERC20(address(token)).forceApprove(address(router), tokensForLp);
+        // Seed the pool by sending both sides straight to the pair and
+        // minting, rather than going through the router.
+        //
+        // addLiquidityETH quotes against whatever reserves already exist and
+        // enforces a ratio. For an ordinary liquidity provider that is right.
+        // For a first seed it hands a griefer a lever: create the pair, seed
+        // it with dust at an absurd price, and every graduation attempt then
+        // reverts on the slippage guard -- permanently blocking the launch,
+        // with no admin anywhere able to fix it. Loosening the guard is worse,
+        // because then the griefer sets the opening price and skims the raise.
+        //
+        // Minting directly takes the opening price from our own amounts. The
+        // pair was created at construction and MemeToken has refused every
+        // transfer into it since (PoolLocked), so its token balance is exactly
+        // what we are about to send. WETH donated to the pair beforehand is
+        // possible but only increases the liquidity we mint and then burn.
+        token.setPoolSeeded();
 
-        try router.addLiquidityETH{value: ethForLp}(
-            address(token), tokensForLp, (tokensForLp * 9000) / BPS, (ethForLp * 9000) / BPS, BURN, block.timestamp
-        ) returns (
-            uint256 amountToken, uint256 amountETH, uint256 liquidity
-        ) {
+        address w = router.WETH();
+        IWETH(w).deposit{value: ethForLp}();
+        if (!IWETH(w).transfer(pair, ethForLp)) revert MigrationFailed();
+
+        // The curve is tax-exempt from construction, so this transfer is not
+        // treated as a sell and the pool gets the full tranche.
+        IERC20(address(token)).safeTransfer(pair, tokensForLp);
+
+        try IUniswapV2Pair(pair).mint(BURN) returns (uint256 liquidity) {
+            if (liquidity == 0) revert MigrationFailed();
             lpAmount = liquidity;
-            _registerPair();
             _deploySplitter();
-            emit MigratedToDex(lpToken, amountETH, amountToken, liquidity);
+            emit MigratedToDex(pair, ethForLp, tokensForLp, liquidity);
         } catch {
             revert MigrationFailed();
         }
-    }
-
-    /// Looks up the freshly created pair and tells the token about it, so the
-    /// token can distinguish buys from sells. Never reverts — a missing pair
-    /// means no post-graduation tax, which is far better than a stuck curve.
-    function _registerPair() private {
-        try router.factory() returns (address f) {
-            try IUniswapV2Factory(f).getPair(address(token), router.WETH()) returns (address pair) {
-                if (pair != address(0)) {
-                    lpToken = pair;
-                    token.setDexPair(pair);
-                }
-            } catch {}
-        } catch {}
     }
 
     /// Taxed tokens get a splitter; untaxed ones don't need one.

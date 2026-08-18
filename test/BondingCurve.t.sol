@@ -172,12 +172,12 @@ contract BondingCurveTest is Test {
         vm.prank(alice);
         curve.buy{value: QT * 10}(0);
 
-        address lp = address(router.lp());
+        // LP now comes from the pair itself, not the router's stand-in token.
+        address lp = curve.lpToken();
         uint256 burned = MemeToken(lp).balanceOf(curve.BURN());
 
         assertGt(burned, 0, "LP must exist");
         assertEq(curve.lpAmount(), burned, "curve must record what it burned");
-
         assertEq(MemeToken(lp).balanceOf(address(curve)), 0);
         assertEq(MemeToken(lp).balanceOf(creator), 0);
         assertEq(MemeToken(lp).balanceOf(alice), 0);
@@ -187,24 +187,47 @@ contract BondingCurveTest is Test {
         vm.prank(alice);
         curve.buy{value: QT * 10}(0);
 
-        assertEq(address(router).balance, QT);
-        assertEq(token.balanceOf(address(router)), (SUPPLY * 1e18 * 2000) / 10000);
+        // The raise reaches the pair as WETH, not as ETH held by the router.
+        address pair = curve.lpToken();
+        address weth = router.WETH();
 
-        assertEq(address(curve).balance, 0);
-        assertEq(token.balanceOf(address(curve)), 0);
+        assertEq(MemeToken(weth).balanceOf(pair), QT, "pool holds the full raise");
+        assertEq(token.balanceOf(pair), (SUPPLY * 1e18 * 2000) / 10000, "pool holds the LP tranche");
+
+        assertEq(address(curve).balance, 0, "curve holds no ETH");
+        assertEq(token.balanceOf(address(curve)), 0, "curve holds no tokens");
     }
 
     /// A failing router must revert the buy, never strand the raise.
-    function test_RevertWhen_RouterFails() public {
-        router.setShouldFail(true);
+    /// A curve with no router never migrates, but must not revert either --
+    /// the raise stays recoverable via sell().
+    function test_NoRouterSkipsMigration() public {
+        BondingCurve orphan = new BondingCurve(
+            "Orphan",
+            "ORPH",
+            SUPPLY,
+            creator,
+            feeTo,
+            0,
+            address(0),
+            address(this),
+            0,
+            0,
+            0,
+            address(0),
+            0,
+            0,
+            0,
+            0,
+            address(splitterDeployer)
+        );
 
         vm.prank(alice);
-        vm.expectRevert(BondingCurve.MigrationFailed.selector);
-        curve.buy{value: QT * 10}(0);
+        orphan.buy{value: QT * 10}(0);
 
-        assertFalse(curve.graduated());
-        assertEq(curve.ethCollected(), 0);
-        assertEq(alice.balance, 100 ether);
+        assertTrue(orphan.graduated(), "still marks graduated");
+        assertEq(orphan.lpToken(), address(0), "no pair without a router");
+        assertEq(orphan.lpAmount(), 0, "no LP minted");
     }
 
     /// Graduation must hit the target regardless of how the buys are split.
@@ -257,7 +280,10 @@ contract BondingCurveTest is Test {
         );
         MemeToken tt = taxed.token();
 
-        assertEq(tt.dexPair(), address(0), "no pair before graduation");
+        // The pair is created at construction so graduation can mint into it
+        // directly; MemeToken keeps it locked until then.
+        assertTrue(tt.dexPair() != address(0), "pair exists from construction");
+        assertFalse(tt.poolSeeded(), "pool stays locked until graduation");
         assertTrue(tt.taxActive());
 
         vm.deal(alice, 100 ether);
@@ -270,10 +296,12 @@ contract BondingCurveTest is Test {
         // The pair now exists and the token knows about it.
         address pair = tt.dexPair();
         assertTrue(pair != address(0), "pair must be registered at graduation");
-        assertTrue(tt.taxExempt(address(router)), "router must be exempt");
-
+        // The router is no longer on the graduation path -- the curve wraps
+        // ETH and transfers to the pair itself -- so it needs no exemption.
+        // What matters is that the pool opened and the pair is registered.
+        assertTrue(tt.poolSeeded(), "pool must be open after graduation");
         // The pool got the full amount — tax did not skim the migration.
-        assertEq(address(router).balance, QT);
+        assertEq(MemeToken(router.WETH()).balanceOf(tt.dexPair()), QT, "pool holds the raise as WETH");
         assertEq(tt.balanceOf(address(taxed)), 0, "curve keeps nothing");
     }
 
