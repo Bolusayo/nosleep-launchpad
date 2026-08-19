@@ -108,20 +108,16 @@ contract RewardsDistributorTest is Test {
     }
 
     /// Selling the NFT hands future rewards to the buyer.
-    function test_RewardsFollowNftOwnership() public {
-        _graduate(idA);
-        dist.enroll(idA);
+    /// Genesis rewards accrue to the enrolled holder and cannot be sold on,
+    /// because the NFT cannot be transferred.
+    function test_RewardsStayWithEnrolledHolder() public {
+        uint256 tokenId = 1;
 
         vm.prank(alice);
-        nft.transferFrom(alice, carol, idA);
+        vm.expectRevert(ReferralNFT.Soulbound.selector);
+        nft.transferFrom(alice, bob, tokenId);
 
-        vm.prank(treasury);
-        dist.depositEth{value: 2 ether}();
-
-        uint256 before = carol.balance;
-        vm.prank(carol);
-        dist.claim(ETH, idA);
-        assertEq(carol.balance - before, 2 ether);
+        assertEq(nft.ownerOf(tokenId), alice, "holder unchanged");
     }
 
     /// THE critical one: a late entrant must not claim earlier deposits.
