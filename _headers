@@ -1,0 +1,22 @@
+# Netlify serves these headers alongside the matching files.
+#
+# The problem this solves: app.js was being cached by browsers, so a fix
+# shipped here would not reach anyone who had already loaded the site until
+# they hard-refreshed. At 20,000 users that is not a workable way to ship a
+# correction to a trading interface.
+#
+# no-cache does not mean "never cache". It means the browser must revalidate
+# with the server before reusing its copy. If nothing changed the server
+# answers 304 and nothing is re-downloaded, so the cost is one small
+# conditional request per page load.
+
+/app.js
+  Cache-Control: no-cache, must-revalidate
+
+/index.html
+  Cache-Control: no-cache, must-revalidate
+
+# Everything else can be cached normally.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

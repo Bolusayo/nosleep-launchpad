@@ -21,6 +21,75 @@ const state = {
 
 const short = (a) => a.slice(0, 6) + '…' + a.slice(-4);
 
+/* ---------- error messages ----------
+   Ethers reports a reverted call as "missing revert data" or a bare custom
+   error selector. Neither means anything to someone trying to buy a token.
+   Every message below is written to tell the person what to do next.        */
+
+const ERROR_MESSAGES = {
+  // BondingCurve
+  SlippageExceeded:  'Price moved while your trade was pending. Try again, or use a smaller amount.',
+  AlreadyGraduated:  'This token has finished its curve and now trades on Uniswap.',
+  WalletCapExceeded: 'That would put you over this token\'s per-wallet limit.',
+  ZeroAmount:        'Enter an amount above zero.',
+  MigrationFailed:   'Graduation could not complete. Nothing was taken from your wallet.',
+  // MemeToken
+  PoolLocked:        'This token cannot trade on Uniswap until its curve completes.',
+  TaxTooHigh:        'Tax cannot exceed 10% per side.',
+  SupplyOutOfRange:  'Supply must be between 1,000,000 and 1,000,000,000,000.',
+  // ReferralNFT
+  Soulbound:         'Referral NFTs cannot be transferred. Commission stays with the referrer.',
+  NothingToClaim:    'There is nothing to claim yet.',
+  NotOwner:          'Only the holder of this NFT can claim.',
+  // shared
+  ZeroAddress:       'That address is not valid.',
+  SendFailed:        'The ETH transfer failed. If you are using a contract wallet, it may reject plain transfers.',
+  TransferFailed:    'The token transfer failed.',
+};
+
+/// Turns whatever ethers threw into a sentence worth showing someone.
+function friendlyError(err, fallback = 'Transaction failed') {
+  if (!err) return fallback;
+
+  // The user changed their mind. Not an error worth a red toast.
+  if (err.code === 'ACTION_REJECTED' || err.code === 4001) return null;
+
+  // A named custom error from one of our contracts.
+  const name = err?.revert?.name
+    || err?.info?.error?.data?.name
+    || (typeof err?.shortMessage === 'string'
+        && Object.keys(ERROR_MESSAGES).find((k) => err.shortMessage.includes(k)));
+  if (name && ERROR_MESSAGES[name]) return ERROR_MESSAGES[name];
+
+  const raw = [err.shortMessage, err.reason, err.message]
+    .filter((x) => typeof x === 'string').join(' | ');
+
+  if (/insufficient funds/i.test(raw)) {
+    return 'Not enough ETH to cover this trade plus gas.';
+  }
+  // Simulation reverted with no data. Almost always an unfunded wallet
+  // rather than a contract problem -- see TODO.md.
+  if (/missing revert data|CALL_EXCEPTION|could not coalesce/i.test(raw)) {
+    return 'The transaction would fail. Usually this means not enough ETH for the amount plus gas.';
+  }
+  if (/nonce/i.test(raw))            return 'Your wallet is out of sync. Reset the account in your wallet settings and retry.';
+  if (/replacement.*underpriced/i.test(raw)) return 'You already have a pending transaction. Wait for it to confirm.';
+  if (/gas required exceeds/i.test(raw))     return 'This transaction needs more gas than your wallet allows.';
+  if (/network|timeout|fetch|ECONN/i.test(raw)) {
+    return 'Could not reach the network. Check your connection and try again.';
+  }
+  if (/user rejected|denied/i.test(raw)) return null;
+
+  // Nothing matched. Show the shortest thing we have rather than a stack.
+  return err.shortMessage || err.reason || fallback;
+}
+
+/// notify() wrapper that swallows user-cancelled actions.
+function notifyError(err, fallback) {
+  const msg = friendlyError(err, fallback);
+  if (msg) notify(msg, 'error');
+}
+
 // Escapes user-controlled strings (token name/symbol/description, etc.)
 // before they're interpolated into innerHTML. Anyone can deploy a token
 // via LaunchpadFactory with arbitrary name/symbol/description, so these
@@ -127,7 +196,7 @@ async function connect() {
   } catch (err) {
     console.error(err);
     setConnectLabel('Connect wallet');
-    notify(err.shortMessage || err.message || 'Connection failed', 'error');
+    notifyError(err, 'Connection failed');
   }
 }
 
@@ -255,7 +324,7 @@ async function deployToken() {
     setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 4000);
   } catch (err) {
     console.error(err);
-    notify(err.shortMessage || err.reason || 'Deploy failed', 'error');
+    notifyError(err, 'Launch failed');
     btn.textContent = original;
     btn.disabled = false;
   }
@@ -427,7 +496,7 @@ function renderLive() {
         amtEl.value = '';
       } catch (err) {
         console.error(err);
-        notify(err.shortMessage || err.reason || 'Trade failed', 'error');
+        notifyError(err, 'Trade failed');
       } finally {
         goBtn.disabled = false;
         goBtn.textContent = label;
@@ -459,7 +528,7 @@ function renderLive() {
             await claimDividends(t);
           } catch (err) {
             console.error(err);
-            notify(err.shortMessage || 'Claim failed', 'error');
+            notifyError(err, 'Claim failed');
             btn2.textContent = label;
             btn2.disabled = false;
           }
@@ -472,15 +541,61 @@ function renderLive() {
   }
 }
 
+let _refreshing = false;
+
 async function refreshExplore() {
+  // Overlapping refreshes would race on LIVE and rebuild the grid twice.
+  if (_refreshing) return;
+  _refreshing = true;
   try {
     LIVE = await fetchLaunches();
     renderLive();
     console.log(`Explore: ${LIVE.length} live token(s)`);
   } catch (err) {
     console.error('Explore refresh failed:', err);
+  } finally {
+    _refreshing = false;
   }
 }
+
+/* ---------- auto-refresh ----------
+   The grid used to update only on load and after your own trades, so anyone
+   watching a curve fill saw a frozen page. It now polls -- but carefully:
+
+   - paused when the tab is hidden, so a backgrounded tab costs no RPC calls
+   - paused while an amount is typed into any card, because renderLive()
+     rebuilds the grid with innerHTML and would wipe what you were typing
+   - skipped if a refresh is already in flight                              */
+
+const REFRESH_MS = 15000;
+let _refreshTimer = null;
+
+function userIsTyping() {
+  const el = document.activeElement;
+  if (!el) return false;
+  if (!el.classList || !el.classList.contains('trade-amt')) return false;
+  return el.value.trim().length > 0;
+}
+
+function startAutoRefresh() {
+  if (_refreshTimer) return;
+  _refreshTimer = setInterval(() => {
+    if (document.hidden) return;
+    if (userIsTyping()) return;
+    refreshExplore();
+  }, REFRESH_MS);
+}
+
+function stopAutoRefresh() {
+  clearInterval(_refreshTimer);
+  _refreshTimer = null;
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  // Coming back to the tab: refresh once immediately rather than waiting.
+  refreshExplore();
+});
 
 /* ---------- trading ---------- */
 
@@ -715,7 +830,7 @@ async function renderReferrals() {
           await renderReferrals();
         } catch (err) {
           console.error(err);
-          notify(err.shortMessage || 'Claim failed', 'error');
+          notifyError(err, 'Claim failed');
           btn.disabled = false;
         }
       });
@@ -785,6 +900,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   refreshExplore();
   renderReferrals();
+  startAutoRefresh();
 
   console.log('NO SLEEP app.js loaded');
 });
