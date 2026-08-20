@@ -154,30 +154,21 @@ contract LaunchpadFactoryTest is Test {
         assertEq(referrer.balance - before, refCut);
     }
 
-    function test_FeesFollowNftToNewOwner() public {
-        LaunchpadFactory.LaunchParams memory p = _params(referrer);
-        p.capBps = 0; // testing fee flow, not the cap
-
+    /// Commission is not transferable along with the NFT, because the NFT is
+    /// not transferable. The referrer keeps what they earned.
+    /// Commission cannot be sold on with the NFT, because the NFT cannot be
+    /// transferred. What the referrer earns stays with the referrer.
+    function test_FeesStayWithReferrer() public {
         vm.prank(creator);
-        (address curveAddr,, uint256 refId) = factory.createToken{value: FEE}(p);
+        (,, uint256 refId) = factory.createToken{value: FEE}(_params(referrer));
 
-        address buyer = makeAddr("nftBuyer");
+        assertEq(nft.ownerOf(refId), referrer, "referrer holds the NFT");
+
         vm.prank(referrer);
-        nft.transferFrom(referrer, buyer, refId);
+        vm.expectRevert(ReferralNFT.Soulbound.selector);
+        nft.transferFrom(referrer, trader, refId);
 
-        uint256 spend = QT / 10;
-        uint256 fee = (spend * 200) / 10_000; // 2% trade fee
-        uint256 refCut = (fee * 1000) / 10_000; // 10% of the fee
-
-        vm.prank(trader);
-        BondingCurve(curveAddr).buy{value: spend}(0);
-
-        assertEq(nft.pending(refId), refCut);
-
-        uint256 before = buyer.balance;
-        vm.prank(buyer);
-        nft.claim(refId);
-        assertEq(buyer.balance - before, refCut);
+        assertEq(nft.ownerOf(refId), referrer, "and still holds it");
     }
 
     function test_GetLaunchesReturnsNewestFirst() public {

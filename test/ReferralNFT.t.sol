@@ -76,43 +76,43 @@ contract ReferralNFTTest is Test {
     }
 
     /// THE important one: accrue, then sell. Old owner keeps what accrued.
-    function test_TransferSettlesToSeller() public {
+    /// The referral right stays with the referrer. Nobody can buy the income
+    /// The referral right stays with the referrer. Nobody can buy the income
+    /// stream from someone else's introduction.
+    function test_RevertWhen_Transferring() public {
+        vm.prank(alice);
+        vm.expectRevert(ReferralNFT.Soulbound.selector);
+        nft.transferFrom(alice, bob, id);
+    }
+
+    function test_RevertWhen_SafeTransferring() public {
+        vm.prank(alice);
+        vm.expectRevert(ReferralNFT.Soulbound.selector);
+        nft.safeTransferFrom(alice, bob, id);
+    }
+
+    /// An approval can be granted but is useless -- the transfer still fails.
+    function test_RevertWhen_ApprovedSpenderTransfers() public {
+        vm.prank(alice);
+        nft.approve(bob, id);
+
+        vm.prank(bob);
+        vm.expectRevert(ReferralNFT.Soulbound.selector);
+        nft.transferFrom(alice, bob, id);
+    }
+
+    /// Commission keeps accruing to the referrer regardless.
+    function test_CommissionStaysWithReferrer() public {
         vm.prank(curve);
         nft.credit{value: 1 ether}(id);
 
-        vm.prank(alice);
-        nft.transferFrom(alice, bob, id);
-
-        // Alice's ether is preserved, not handed to Bob.
-        assertEq(nft.pending(id), 0);
-        assertEq(nft.claimable(alice), 1 ether);
+        assertEq(nft.pending(id), 1 ether);
+        assertEq(nft.ownerOf(id), alice, "referrer still holds it");
 
         uint256 before = alice.balance;
         vm.prank(alice);
-        nft.claimSettled();
-        assertEq(alice.balance - before, 1 ether);
-    }
-
-    /// And Bob earns everything after the sale.
-    function test_NewOwnerEarnsFutureCommissions() public {
-        vm.prank(curve);
-        nft.credit{value: 1 ether}(id);
-
-        vm.prank(alice);
-        nft.transferFrom(alice, bob, id);
-
-        vm.prank(curve);
-        nft.credit{value: 2 ether}(id);
-
-        assertEq(nft.pending(id), 2 ether);
-
-        uint256 before = bob.balance;
-        vm.prank(bob);
         nft.claim(id);
-        assertEq(bob.balance - before, 2 ether);
-
-        // Alice cannot touch the post-sale commission.
-        assertEq(nft.claimable(alice), 1 ether);
+        assertEq(alice.balance - before, 1 ether, "referrer receives it");
     }
 
     function test_MigrationAssignsGenesisNumber() public {
@@ -149,21 +149,26 @@ contract ReferralNFTTest is Test {
     }
 
     /// No sequence of credits and transfers may create or destroy ether.
-    function testFuzz_NoValueLeaks(uint96 a, uint96 b) public {
-        uint256 x = bound(uint256(a), 1, 1_000 ether);
-        uint256 y = bound(uint256(b), 1, 1_000 ether);
-        vm.deal(curve, x + y);
+    /// Whatever is credited is exactly what can be claimed. No dust, no leak.
+    /// Whatever is credited is exactly what can be claimed. No dust, no leak.
+    function testFuzz_CreditedEqualsClaimed(uint96 a, uint96 b) public {
+        vm.assume(uint256(a) + uint256(b) > 0);
+        vm.deal(curve, uint256(a) + uint256(b));
 
         vm.prank(curve);
-        nft.credit{value: x}(id);
+        nft.credit{value: a}(id);
+        vm.prank(curve);
+        nft.credit{value: b}(id);
 
+        uint256 total = uint256(a) + uint256(b);
+        assertEq(nft.pending(id), total, "all credits accrue");
+
+        uint256 before = alice.balance;
         vm.prank(alice);
-        nft.transferFrom(alice, bob, id);
+        nft.claim(id);
 
-        vm.prank(curve);
-        nft.credit{value: y}(id);
-
-        assertEq(nft.claimable(alice) + nft.pending(id), x + y);
-        assertEq(address(nft).balance, x + y);
+        assertEq(alice.balance - before, total, "all of it is claimable");
+        assertEq(address(nft).balance, 0, "nothing left behind");
+        assertEq(nft.pending(id), 0, "pending cleared");
     }
 }
