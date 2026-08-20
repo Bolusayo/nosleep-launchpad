@@ -30,7 +30,7 @@ createToken()
     │       ├─ constructor ──> MemeToken   (100% supply to the curve)
     │       └─ constructor ──> factory.createPair(TOKEN, WETH)
     │                          token.setDexPair(pair)   [pair now LOCKED]
-    ├─ ReferralNFT.mintReferral()      (only if a referrer was named)
+    ├─ ReferralNFT.mintReferral()      (only if a referrer was named; soulbound)
     ├─ curve.setReferral()
     └─ curve.buyFor()                  (optional atomic dev buy, cap-exempt)
     │
@@ -117,7 +117,7 @@ quoting must happen on-chain — see §8.
 | `MemeToken` | Fixed-supply ERC-20. Optional asymmetric buy/sell tax. Locks the pair until graduation. |
 | `FeeSplitter` | Post-graduation tax, split four ways, pull-based execution. |
 | `LaunchpadFactory` | Entry point. Atomic launch + dev buy + referral mint. `Ownable`. |
-| `ReferralNFT` | ERC-721 referral rights, pull-based commission, transfer settlement. |
+| `ReferralNFT` | Soulbound ERC-721 referral rights, pull-based commission. |
 | `DividendVault` | Proportional dividends in the token itself, settled on transfer. |
 | `RewardsDistributor` | Multi-asset accumulator for Genesis NFT holders. **Not deployed — §7.** |
 | `CurveDeployer` | Bytecode isolation: holds `BondingCurve` creation code. |
@@ -152,6 +152,9 @@ swap can never block the split, and no logic runs inside a transfer.
 | `MemeToken` `curve` (immutable) | `setDexPair`, `setPoolSeeded`, `setTaxCollector`, `setDividendVault`, `setExempt` |
 | `FeeSplitter` `deployer` (the SplitterDeployer) | `setDividendVault` (once, during deployment) |
 | `BondingCurve` `factory` (immutable) | `setReferral` (once), `buyFor` |
+
+**`ReferralNFT` is soulbound.** Minting works; every transfer reverts
+`Soulbound()`. There is no admin override and no burn.
 
 **No contract is upgradeable. No contract has an owner-withdraw or rescue
 function.** Once deployed, curve and token behaviour is fixed. Anything
@@ -203,7 +206,7 @@ fails or returns zero, so the raise is never half-migrated.
 13. **Registered pair is the real pair** — `token.dexPair() == factory.getPair(token, WETH)`.
 14. **Dividend solvency** — a wallet acquiring tokens after a deposit earns nothing from it, and `sum(pending) <= balanceOf(vault)`.
 15. **Curve trades are untaxed**; **wallet-to-wallet is untaxed**; only transfers to/from `dexPair` are taxed.
-16. **Referral commission follows the NFT** — future commissions accrue to the current holder; accrued-but-unclaimed settles to the seller on transfer.
+16. **Referral commission stays with the referrer** — the NFT cannot be transferred, so the commission stream cannot be sold, gifted, or seized. Everything credited to an id is claimable by its original recipient and nothing else.
 17. **No late-entrant exploitation in `RewardsDistributor`** — enrolment snapshots every known asset's accumulator.
 
 ### Intended but unstated in code
@@ -220,7 +223,7 @@ fails or returns zero, so the raise is never half-migrated.
 
 ```
 fee = 2% of gross
-  ├─ referralBps (10% of the fee) ──> ReferralNFT.credit(id)   [pending → holder]
+  ├─ referralBps (10% of the fee) ──> ReferralNFT.credit(id)   [pending → referrer]
   └─ remainder ────────────────────> feeRecipient
 ```
 
@@ -339,6 +342,17 @@ references it, and `DEPOSITOR_ROLE` is granted only in tests. Fully written,
 initialised to 1000 with no way to change it. Either make it `constant` or add
 a setter; as written it costs a storage read while behaving like a constant.
 
+**7.19 — `ReferralNFT` is soulbound, which orphans two things.**
+`claimSettled()`, the `claimable` mapping, the `Settled` event, and the
+settle-on-transfer block inside `_update` are all now unreachable: with `from`
+always zero, nothing ever settles. They are retained deliberately so that
+restoring transferability is a one-line change, but a reviewer should treat
+them as dead code and confirm they cannot be reached by any path.
+
+Separately, `RewardsDistributor`'s premise was that Genesis rewards follow NFT
+ownership. Ownership can no longer change, so that subsystem is not merely
+undeployed (7.3–7.4) but conceptually orphaned. See §9.
+
 ### Areas needing review attention
 
 **7.9 — `FeeSplitter.addLiquidity` passes `0, 0`** as
@@ -421,6 +435,17 @@ embedded `BondingCurve`'s creation code, hence `CurveDeployer`. Later
 load-bearing: `CurveDeployer` and `SplitterDeployer` → `LaunchpadFactory`
 (takes both) → `deployer.setFactory()`.
 
+**The referral NFT is soulbound.** An affiliate commission — you introduce
+someone, you earn a share of what they generate — is an ordinary commercial
+arrangement. Tokenising the *right* to that commission and making it freely
+tradeable turns it into something a buyer might acquire purely for income
+produced by someone else's ongoing work, which is a materially different
+instrument. The right therefore stays with the person who earned it.
+
+Burning is blocked as well as transferring. The curve calls `credit(id)`
+without checking ownership, so a burned id would keep accruing ETH that no
+one could ever claim.
+
 **Enrolment snapshots in `RewardsDistributor`, settle-on-transfer in
 `DividendVault`.** Two different solutions to the same late-entrant problem,
 because the NFT has a natural enrolment moment and the ERC-20 does not.
@@ -443,6 +468,9 @@ because the NFT has a natural enrolment moment and the ERC-20 does not.
    the least-aged code in the system.
 2. The token→vault settle-on-transfer callback (§7.2, §7.13) — it runs on
    every transfer of every taxed token.
+3. `ReferralNFT._update` (§7.19) — confirm the soulbound guard admits minting
+   and nothing else, and that the retained settle block is genuinely
+   unreachable.
 
 ### Out of scope
 
@@ -452,12 +480,17 @@ because the NFT has a natural enrolment moment and the ERC-20 does not.
 
 ### Scope decision required
 
-`src/RewardsDistributor.sol` — built and tested but unreachable (§7.3–7.4).
-Either wire it before audit or exclude it. Auditing dead code is wasted spend.
+`src/RewardsDistributor.sol` — built and tested, but unreachable (§7.3–7.4)
+*and* built on a premise the soulbound change removed (§7.19). Our current
+intention is to exclude it. Auditing dead code is wasted spend.
+
+If it is excluded, the unreachable settle-on-transfer machinery in
+`ReferralNFT` (§7.19) should still be reviewed, since it lives in a contract
+that is in scope.
 
 ### Prior verification already performed
 
-- **101 unit tests**, 9 suites, 6 fuzz invariants.
+- **103 unit tests**, 9 suites, 6 fuzz invariants.
 - **14 fork tests** against the real Uniswap V2 deployment on a mainnet fork:
   `test/ForkGraduation.t.sol` (LP accounting, CREATE2 pair registration,
   pool-seed tax exemption, post-graduation taxed sell) and
