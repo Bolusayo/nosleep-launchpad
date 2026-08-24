@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {IUniswapV2Router} from "./interfaces/IUniswapV2Router.sol";
+import {IUniswapV2Router, IUniswapV2Pair} from "./interfaces/IUniswapV2Router.sol";
 import {MemeToken} from "./MemeToken.sol";
 
 interface IDividendVault {
@@ -18,6 +18,10 @@ contract FeeSplitter is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint256 public constant BPS = 10_000;
+
+    /// Largest slice of the pool this contract will sell in one call, in bps.
+    /// See addLiquidity() for why a size cap is the protection here.
+    uint256 public constant MAX_SWAP_BPS_OF_POOL = 100; // 1%
     address public constant BURN = 0x000000000000000000000000000000000000dEaD;
 
     MemeToken public immutable token;
@@ -164,13 +168,49 @@ contract FeeSplitter is ReentrancyGuard {
         emit MarketingPaid(marketing, ethOut);
     }
 
+    /// Largest amount of token this contract will sell in one addLiquidity
+    /// call: a fixed slice of what the pool actually holds. Returns 0 if
+    /// there is no pool yet, or it is empty.
+    function swapCap() public view returns (uint256) {
+        address pair = token.dexPair();
+        if (pair == address(0)) return 0;
+
+        (uint112 r0, uint112 r1,) = IUniswapV2Pair(pair).getReserves();
+        if (r0 == 0 || r1 == 0) return 0;
+
+        uint256 reserveToken = IUniswapV2Pair(pair).token0() == address(token) ? r0 : r1;
+        return (reserveToken * MAX_SWAP_BPS_OF_POOL) / BPS;
+    }
+
     /// Converts half the liquidity allocation to ETH and pairs it with the
     /// other half. LP goes to the burn address, same as graduation.
+    ///
+    /// This function is permissionless and `minEthOut` comes from the caller,
+    /// so `minEthOut` cannot be the protection: an attacker sandwiching the
+    /// swap simply calls it themselves and passes zero. A Uniswap V2 pool
+    /// also offers no manipulation-resistant price to check against on-chain,
+    /// since its reserves are exactly what the attacker just moved.
+    ///
+    /// What bounds the damage is trade size. A sandwich earns the slippage
+    /// the victim incurs, and slippage grows with the trade's size relative
+    /// to the pool. Selling at most `MAX_SWAP_BPS_OF_POOL` of the reserve
+    /// caps that, no matter who calls or what they pass.
+    ///
+    /// Anything above the cap stays in `liquidityPool` and is handled by the
+    /// next call, so nothing is stranded and nobody can block progress -- the
+    /// allocation just converts in slices instead of all at once.
     function addLiquidity(uint256 minEthOut) external nonReentrant {
         uint256 amount = liquidityPool;
         if (amount < 2) revert NothingAllocated();
 
-        liquidityPool = 0;
+        uint256 cap = swapCap();
+        if (cap == 0) revert NothingAllocated();
+
+        // `amount` is split in half, so the cap applies to amount/2.
+        if (amount / 2 > cap) amount = cap * 2;
+        if (amount < 2) revert NothingAllocated();
+
+        liquidityPool -= amount;
 
         uint256 half = amount / 2;
         uint256 otherHalf = amount - half;
@@ -191,13 +231,16 @@ contract FeeSplitter is ReentrancyGuard {
         // Pair the other half with the ETH we just received.
         IERC20(address(token)).forceApprove(address(router), otherHalf);
 
+        // The token side must land almost in full. Our own swap just moved
+        // the price against us, so the pool wants slightly less ETH than we
+        // are offering -- the surplus comes back and the token side is the
+        // one fully consumed. A floor here rejects a pool whose ratio was
+        // moved far enough that our tokens would be left behind.
+        //
+        // The ETH side stays at zero on purpose: the router refunds whatever
+        // it does not use, and a floor there would reject the ordinary case.
         (,, uint256 liquidity) = router.addLiquidityETH{value: ethOut}(
-            address(token),
-            otherHalf,
-            0, // ratio is set by the pool; we take what we get
-            0,
-            BURN,
-            block.timestamp
+            address(token), otherHalf, (otherHalf * 9500) / BPS, 0, BURN, block.timestamp
         );
 
         emit LiquidityAdded(otherHalf, ethOut, liquidity);

@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {FeeSplitter} from "../src/FeeSplitter.sol";
 import {MemeToken} from "../src/MemeToken.sol";
-import {MockV2Router} from "../src/mocks/MockV2Router.sol";
+import {MockV2Router, MockV2Pair, MockWETH} from "../src/mocks/MockV2Router.sol";
 import {IUniswapV2Router} from "../src/interfaces/IUniswapV2Router.sol";
 
 contract FeeSplitterTest is Test {
@@ -15,6 +15,7 @@ contract FeeSplitterTest is Test {
     address internal curve = makeAddr("curve");
     address internal creator = makeAddr("creator");
     address internal marketing = makeAddr("marketing");
+    address internal pair;
 
     uint256 internal constant SUPPLY = 1_000_000_000;
     uint256 internal constant THRESHOLD = 1000e18;
@@ -35,6 +36,22 @@ contract FeeSplitterTest is Test {
             THRESHOLD,
             FeeSplitter.BurnMode.Threshold
         );
+        // addLiquidity() sizes its swap against the pair's reserves, so these
+        // tests need a real pool rather than a token with no market. Mirrors
+        // what graduation leaves behind: pair created, pool seeded, reserves
+        // in place.
+        pair = router.factoryContract().createPair(address(token), router.WETH());
+
+        vm.startPrank(curve);
+        token.setDexPair(pair);
+        token.setPoolSeeded();
+        token.transfer(pair, 100_000_000e18);
+        vm.stopPrank();
+
+        vm.deal(address(this), 100 ether);
+        MockWETH(payable(router.WETH())).deposit{value: 10 ether}();
+        MockWETH(payable(router.WETH())).transfer(pair, 10 ether);
+        MockV2Pair(pair).mint(address(this));
     }
 
     function _fund(uint256 amount) internal {
