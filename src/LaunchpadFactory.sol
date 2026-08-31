@@ -18,7 +18,11 @@ contract LaunchpadFactory is Ownable, ReentrancyGuard {
     address public immutable splitterDeployer;
 
     uint256 public deployFee = 0.002 ether;
-    uint16 public referralCommissionBps = 1_000; // 10% of the 2% trade fee
+    /// Referrer's share of the 2% trade fee. Fixed, not adjustable: a referral
+    /// programme whose rate the operator can move after people have brought
+    /// users in is a weaker promise than one they cannot. 10% of 2% is 0.2%
+    /// of the trade.
+    uint16 public constant referralCommissionBps = 1_000;
     address public feeRecipient;
 
     struct Launch {
