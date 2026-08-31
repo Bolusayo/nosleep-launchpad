@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {BondingCurve} from "./BondingCurve.sol";
 import {ReferralNFT} from "./ReferralNFT.sol";
@@ -9,7 +9,17 @@ import {CurveDeployer} from "./CurveDeployer.sol";
 
 /// @notice Entry point for the launchpad. One transaction deploys the token,
 ///         its curve, the referral NFT, and the creator's launch buy.
-contract LaunchpadFactory is Ownable, ReentrancyGuard {
+/// Ownership is two-step on purpose. The owner controls `setDeployFee` and
+/// `setFeeRecipient`, so with a single-step transfer one mistyped character
+/// would hand the platform's revenue to an address nobody holds the key to,
+/// permanently and with no recovery. Under Ownable2Step the proposed owner
+/// must call `acceptOwnership()` from the address itself, so a wrong address
+/// simply never completes the transfer.
+///
+/// Handing over: call `setFeeRecipient` FIRST, while you are still the owner,
+/// then `transferOwnership`. The other order leaves you unable to redirect
+/// revenue and dependent on the new owner to do it.
+contract LaunchpadFactory is Ownable2Step, ReentrancyGuard {
     uint256 public constant BPS = 10_000;
 
     ReferralNFT public immutable referralNFT;

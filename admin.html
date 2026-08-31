@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>No Sleep — Factory Admin</title>
+<style>
+  :root {
+    --bg:#0a0c0a; --panel:#101410; --line:#1e2a1e;
+    --text:#dfe6df; --dim:#7d8a7d; --accent:#3ddc84; --warn:#e0b341; --err:#e06c5a;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:14px/1.6 var(--mono);padding:32px 16px}
+  .wrap{max-width:680px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 4px;letter-spacing:.5px}
+  .sub{color:var(--dim);font-size:12px;margin-bottom:28px}
+  .panel{background:var(--panel);border:1px solid var(--line);padding:20px;margin-bottom:16px}
+  .panel h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;
+            color:var(--dim);margin:0 0 16px;font-weight:500}
+  .row{display:flex;justify-content:space-between;gap:12px;
+       padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+  .row:last-child{border-bottom:none}
+  .row .k{color:var(--dim);white-space:nowrap}
+  .row .v{text-align:right;word-break:break-all}
+  .you{color:var(--accent)}
+  input{width:100%;background:#0a0e0a;border:1px solid var(--line);color:var(--text);
+        padding:11px 12px;font:13px var(--mono);margin-bottom:12px}
+  input:focus{outline:none;border-color:var(--accent)}
+  button{background:var(--accent);color:#06170d;border:none;padding:11px 18px;
+         font:600 13px var(--mono);cursor:pointer;margin-right:8px}
+  button.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+  button:disabled{opacity:.35;cursor:not-allowed}
+  .note{font-size:12px;color:var(--dim);margin-top:10px;line-height:1.55}
+  .banner{border-left:2px solid var(--warn);padding:10px 14px;margin-bottom:16px;
+          font-size:12px;color:var(--dim);background:#14120a}
+  .banner b{color:var(--warn)}
+  #log{font-size:12px;margin-top:16px;min-height:20px}
+  .ok{color:var(--accent)} .bad{color:var(--err)} .pend{color:var(--warn)}
+  .hidden{display:none}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Factory Admin</h1>
+  <div class="sub">No Sleep · Robinhood Chain · chainId 4663</div>
+
+  <div class="banner">
+    <b>This page will never ask for a private key.</b> It builds transactions
+    for your wallet to sign; your key stays in your wallet and is never sent
+    anywhere. Any site asking you to type a private key or seed phrase is
+    stealing it — including one that looks like this.
+  </div>
+
+  <div class="panel">
+    <h2>Connection</h2>
+    <div class="row"><span class="k">Wallet</span><span class="v" id="wallet">not connected</span></div>
+    <div class="row"><span class="k">Network</span><span class="v" id="network">—</span></div>
+    <div class="row"><span class="k">Factory</span><span class="v" id="factory">—</span></div>
+    <div style="margin-top:16px">
+      <button id="connect">Connect wallet</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Current state</h2>
+    <div class="row"><span class="k">Owner</span><span class="v" id="owner">—</span></div>
+    <div class="row"><span class="k">Pending owner</span><span class="v" id="pending">—</span></div>
+    <div class="row"><span class="k">Fee recipient</span><span class="v" id="recipient">—</span></div>
+    <div class="row"><span class="k">Deploy fee</span><span class="v" id="fee">—</span></div>
+    <div style="margin-top:16px">
+      <button class="ghost" id="refresh">Refresh</button>
+    </div>
+  </div>
+
+  <div class="panel hidden" id="acceptPanel">
+    <h2>Accept ownership</h2>
+    <div class="note">
+      You are the pending owner. Ownership does not move until you accept from
+      this address — that is what makes a mistyped transfer harmless.
+    </div>
+    <div style="margin-top:16px">
+      <button id="accept">Accept ownership</button>
+    </div>
+  </div>
+
+  <div class="panel hidden" id="ownerPanel">
+    <h2>Owner actions</h2>
+
+    <div class="note" style="margin:0 0 10px">
+      Where protocol revenue is sent. Takes effect on the next launch fee.
+    </div>
+    <input id="newRecipient" placeholder="New fee recipient (0x…)" spellcheck="false">
+    <button id="setRecipient">Set fee recipient</button>
+
+    <div class="note" style="margin:22px 0 10px">
+      Launch fee, in ETH. The factory ships locked at 1000 ETH so nobody can
+      launch before you are ready; set it to something normal to open.
+    </div>
+    <input id="newFee" placeholder="New deploy fee in ETH, e.g. 0.002" spellcheck="false">
+    <button id="setFee">Set deploy fee</button>
+
+    <div class="note" style="margin:22px 0 10px">
+      Hand the factory to a new owner. They must call Accept from their own
+      wallet before anything changes. <b>Set the fee recipient first</b> —
+      afterwards you will no longer be able to.
+    </div>
+    <input id="newOwner" placeholder="New owner (0x…)" spellcheck="false">
+    <button class="ghost" id="transfer">Propose transfer</button>
+  </div>
+
+  <div id="log"></div>
+
+  <div class="note" style="margin-top:24px">
+    Read-only until a wallet is connected. Owner actions appear only if the
+    connected wallet is the owner — the contract enforces this regardless of
+    what this page shows.
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<script>
+/* ------------------------------------------------------------------ *
+ * Fill this in after deployment.                                     *
+ * ------------------------------------------------------------------ */
+const FACTORY = '0x0000000000000000000000000000000000000000';
+
+const CHAIN = {
+  chainId: '0x1237',                       // 4663
+  chainName: 'Robinhood Chain',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: ['https://rpc.mainnet.chain.robinhood.com'],
+  blockExplorerUrls: ['https://explorer.chain.robinhood.com'],
+};
+
+const ABI = [
+  'function owner() view returns (address)',
+  'function pendingOwner() view returns (address)',
+  'function feeRecipient() view returns (address)',
+  'function deployFee() view returns (uint256)',
+  'function acceptOwnership()',
+  'function transferOwnership(address newOwner)',
+  'function setFeeRecipient(address r)',
+  'function setDeployFee(uint256 fee)',
+];
+
+const $ = (id) => document.getElementById(id);
+const ZERO = '0x0000000000000000000000000000000000000000';
+
+let provider, signer, account, factory;
+
+function log(msg, cls = '') {
+  $('log').innerHTML = `<span class="${cls}">${msg}</span>`;
+}
+
+const sameAddr = (a, b) =>
+  !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
+/* Read-only view works without a wallet. */
+async function readState() {
+  const ro = new ethers.JsonRpcProvider(CHAIN.rpcUrls[0]);
+  const c = new ethers.Contract(FACTORY, ABI, ro);
+
+  const [owner, pending, recipient, fee] = await Promise.all([
+    c.owner(), c.pendingOwner(), c.feeRecipient(), c.deployFee(),
+  ]);
+
+  const mark = (addr) =>
+    sameAddr(addr, account)
+      ? `<span class="you">${addr} (you)</span>`
+      : addr;
+
+  $('owner').innerHTML     = mark(owner);
+  $('pending').innerHTML   = pending === ZERO ? '<span style="color:var(--dim)">none</span>' : mark(pending);
+  $('recipient').innerHTML = mark(recipient);
+  $('fee').textContent     = `${ethers.formatEther(fee)} ETH`;
+
+  $('ownerPanel').classList.toggle('hidden',  !sameAddr(owner, account));
+  $('acceptPanel').classList.toggle('hidden', !sameAddr(pending, account));
+
+  return { owner, pending };
+}
+
+async function connect() {
+  if (!window.ethereum) {
+    log('No wallet found. Install MetaMask or another EVM wallet.', 'bad');
+    return;
+  }
+  try {
+    provider = new ethers.BrowserProvider(window.ethereum);
+    await provider.send('eth_requestAccounts', []);
+
+    const net = await provider.getNetwork();
+    if (Number(net.chainId) !== 4663) {
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: CHAIN.chainId }],
+        });
+      } catch (e) {
+        if (e.code === 4902) {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain', params: [CHAIN],
+          });
+        } else { throw e; }
+      }
+      provider = new ethers.BrowserProvider(window.ethereum);
+    }
+
+    signer  = await provider.getSigner();
+    account = await signer.getAddress();
+    factory = new ethers.Contract(FACTORY, ABI, signer);
+
+    $('wallet').innerHTML  = `<span class="you">${account}</span>`;
+    $('network').textContent = 'Robinhood Chain (4663)';
+    $('connect').textContent = 'Connected';
+    $('connect').disabled = true;
+
+    await readState();
+    log('Connected. Your key never left your wallet.', 'ok');
+  } catch (err) {
+    log(friendly(err), 'bad');
+  }
+}
+
+function friendly(err) {
+  if (err?.code === 'ACTION_REJECTED' || err?.code === 4001) {
+    return 'Rejected in wallet.';
+  }
+  const raw = [err?.shortMessage, err?.reason, err?.message]
+    .filter((x) => typeof x === 'string').join(' | ');
+
+  if (/OwnableUnauthorizedAccount|not the owner/i.test(raw)) {
+    return 'That wallet is not the owner of this factory.';
+  }
+  if (/insufficient funds/i.test(raw)) return 'Not enough ETH for gas.';
+  if (/missing revert data|CALL_EXCEPTION/i.test(raw)) {
+    return 'The transaction would fail. Check you are the owner and the address is right.';
+  }
+  return err?.shortMessage || err?.reason || 'Transaction failed.';
+}
+
+/* Wraps a write: sends, waits, refreshes. */
+async function send(label, fn) {
+  try {
+    log(`${label}: confirm in your wallet…`, 'pend');
+    const tx = await fn();
+    log(`${label}: submitted, waiting for confirmation…`, 'pend');
+    await tx.wait();
+    await readState();
+    log(`${label}: done.`, 'ok');
+  } catch (err) {
+    log(`${label}: ${friendly(err)}`, 'bad');
+  }
+}
+
+$('connect').onclick = connect;
+$('refresh').onclick = () => readState().catch((e) => log(friendly(e), 'bad'));
+
+$('accept').onclick = () =>
+  send('Accept ownership', () => factory.acceptOwnership());
+
+$('setRecipient').onclick = () => {
+  const a = $('newRecipient').value.trim();
+  if (!ethers.isAddress(a)) return log('That is not a valid address.', 'bad');
+  send('Set fee recipient', () => factory.setFeeRecipient(a));
+};
+
+$('setFee').onclick = () => {
+  const v = $('newFee').value.trim();
+  if (!v || isNaN(v) || Number(v) < 0) return log('Enter a fee in ETH, e.g. 0.002', 'bad');
+  send('Set deploy fee', () => factory.setDeployFee(ethers.parseEther(v)));
+};
+
+$('transfer').onclick = () => {
+  const a = $('newOwner').value.trim();
+  if (!ethers.isAddress(a)) return log('That is not a valid address.', 'bad');
+  if (sameAddr(a, account)) return log('That is already your address.', 'bad');
+  if (!confirm(
+    `Propose transferring ownership to:\n\n${a}\n\n` +
+    `Nothing changes until they call Accept from that address. ` +
+    `Have you already set the fee recipient?`
+  )) return;
+  send('Propose transfer', () => factory.transferOwnership(a));
+};
+
+if (window.ethereum) {
+  window.ethereum.on('accountsChanged', () => location.reload());
+  window.ethereum.on('chainChanged',   () => location.reload());
+}
+
+// Show the current state before anyone connects.
+readState().catch(() =>
+  log('Could not read the factory. Check FACTORY is set in this file.', 'bad'));
+</script>
+</body>
+</html>
