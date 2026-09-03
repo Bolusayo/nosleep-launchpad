@@ -162,6 +162,7 @@ const sameAddr = (a, b) =>
 
 /* Read-only view works without a wallet. */
 async function readState() {
+  $('factory').textContent = FACTORY;
   const ro = new ethers.JsonRpcProvider(CHAIN.rpcUrls[0]);
   const c = new ethers.Contract(FACTORY, ABI, ro);
 
