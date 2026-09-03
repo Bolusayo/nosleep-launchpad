@@ -4,11 +4,11 @@
    =========================================================== */
 
 const CHAIN = {
-  chainId: '0xB626',                  // 46630
-  chainName: 'Robinhood Chain Testnet',
+  chainId: '0x1237',                  // 4663 — Robinhood Chain mainnet
+  chainName: 'Robinhood Chain',
   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-  rpcUrls: ['https://rpc.testnet.chain.robinhood.com'],
-  blockExplorerUrls: ['https://explorer.testnet.chain.robinhood.com'],
+  rpcUrls: ['https://rpc.mainnet.chain.robinhood.com'],
+  blockExplorerUrls: ['https://explorer.chain.robinhood.com'],
 };
 
 const state = {
@@ -202,10 +202,16 @@ async function connect() {
 
 /* ---------- contracts ---------- */
 
-const TARGET_ETH = '0.004';   // TESTNET — restore to '4' before mainnet
+// Must match BondingCurve.QUOTE_TARGET. The contract raises 4 ether; this
+// value only drives the progress bars and card labels, so a mismatch shows
+// everyone the wrong completion percentage.
+const TARGET_ETH = '4';
+
+// Robinhood Chain mainnet, deployed at block 53540363.
+// Factory owner and fee recipient: 0x2bb8CE046631b50149a74Dc9902402A614A6D8F3
 const ADDR = {
-  factory: '0x3296ee0ebB5c079f251Ec3eeB62f790Ef9529EAb',
-  nft:     '0x035Cb2fdeB18f4d7EF3D406e7d4e33299ca56bb2',
+  factory: '0xb166AbFd3A0bc0014fC60F5cc83170961e6B7e0f',
+  nft:     '0x971Da0341aE6C47C13D971E06580BA98F49B4e69',
 };
 
 const FACTORY_ABI = [
