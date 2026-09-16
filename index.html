@@ -1057,6 +1057,70 @@
   @media (max-width:900px){ .token-grid{grid-template-columns:repeat(2,1fr);} }
   @media (max-width:620px){ .token-grid{grid-template-columns:1fr;} }
 
+  /* ==========================================================
+     PHONE LAYOUT
+     Most of the site already collapses at 900px and 800px, which
+     covers tablets. Several launchpad grids stopped there and never
+     went further, so on a 375px screen a 4-column stat row became
+     four unreadable slivers. These rules take those the rest of the
+     way down.
+     ========================================================== */
+  @media (max-width:620px){
+
+    /* Launchpad header: the nav has five links and a Connect button
+       on a 64px row. Let it wrap onto its own line and scroll
+       sideways rather than crushing or overflowing the viewport. */
+    #launchpadHeader{margin-top:64px;}
+    .header-inner{
+      height:auto; flex-wrap:wrap; gap:10px;
+      padding-top:12px; padding-bottom:12px;
+    }
+    .header-inner nav{
+      order:3; width:100%;
+      overflow-x:auto; -webkit-overflow-scrolling:touch;
+      gap:0; padding-bottom:2px;
+    }
+    .header-inner nav::-webkit-scrollbar{display:none;}
+    nav a{padding:8px 10px; font-size:12.5px; white-space:nowrap;}
+    .logo{font-size:16px;}
+    .connect-btn{font-size:12.5px; padding:8px 14px;}
+
+    /* Stat strips: four across is unreadable on a phone. Two is. */
+    .viz-stats,
+    .ref-stats,
+    .mine-stats,
+    .lifecycle{grid-template-columns:1fr 1fr;}
+
+    /* Paired form fields stack rather than squeeze. */
+    .row2,
+    .taxrow{grid-template-columns:1fr;}
+
+    /* Mining cards go single file. */
+    .mine-grid{grid-template-columns:1fr;}
+
+    /* Panels lose some padding so content keeps its width. */
+    .panel{border-radius:10px;}
+    .viz-panel{padding:18px;}
+    .upload-box{padding:20px 14px;}
+
+    /* Long addresses and hashes must not push the page sideways. */
+    .mono{word-break:break-word;}
+  }
+
+  /* Narrow phones -- 360px and below. */
+  @media (max-width:400px){
+    .viz-stats,
+    .ref-stats,
+    .mine-stats,
+    .lifecycle{grid-template-columns:1fr;}
+  }
+
+  /* Nothing should ever cause a horizontal scrollbar on the page
+     itself; wide content scrolls inside its own container instead. */
+  @media (max-width:620px){
+    html, body{overflow-x:hidden;}
+  }
+
   .token-card{
     background:var(--panel);
     border:1px solid var(--line);
