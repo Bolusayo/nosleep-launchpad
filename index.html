@@ -1157,7 +1157,7 @@
     <a href="#night-shift" data-goto="home">Night Shift</a>
     <a href="#token" data-goto="home">$247</a>
     <a href="#mint" class="mint-link" data-goto="home">Mint</a>
-    <a href="#" class="mint-link" data-goto="launchpad">Launchpad</a>
+    <a href="#launchpad" class="mint-link" data-goto="launchpad" target="_blank" rel="noopener">Launchpad</a>
   </div>
   <div class="status"><span class="dot"></span><span class="mono">STILL AWAKE</span></div>
 </nav>
@@ -1446,13 +1446,13 @@
 
 <header id="launchpadHeader" style="display:none;">
   <div class="wrap header-inner">
-    <a href="#" data-goto="launchpad" style="text-decoration:none;"><div class="logo"><span class="dot"></span>&#9670; LAUNCHPAD</div></a>
+    <a href="#launchpad" data-goto="launchpad" target="_blank" rel="noopener" style="text-decoration:none;"><div class="logo"><span class="dot"></span>&#9670; LAUNCHPAD</div></a>
     <nav id="mainNav">
-      <a href="#" data-goto="launchpad">Launch</a>
+      <a href="#launchpad" data-goto="launchpad" target="_blank" rel="noopener">Launch</a>
       <a href="#explore" data-goto="launchpad">Explore</a>
       <a href="#referrals" data-goto="launchpad">Referrals</a>
       <a href="#x-trading" data-goto="launchpad">Trade on X</a>
-      <a href="#" class="mine-link" data-goto="mine">Mine</a>
+      <a href="#mine" class="mine-link" data-goto="mine" target="_blank" rel="noopener">Mine</a>
     </nav>
     <button class="connect-btn">Connect wallet</button>
   </div>
@@ -1475,9 +1475,11 @@
 
       <div class="field">
         <label>Upload image</label>
-        <div class="upload-box">
-          <div class="upload-icon">＋</div>
-          <div>Drop an image, or click to browse<br><span style="color:var(--text-faint); font-size:11.5px;">PNG or JPG, up to 2MB</span></div>
+        <div class="upload-box" id="imgBox">
+          <input type="file" id="imgInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none;">
+          <img id="imgPreview" alt="" style="display:none; max-width:96px; max-height:96px; border-radius:6px; margin:0 auto 8px;">
+          <div class="upload-icon" id="imgIcon">＋</div>
+          <div id="imgLabel">Drop an image, or click to browse<br><span style="color:var(--text-faint); font-size:11.5px;">PNG or JPG, up to 2MB &middot; optional</span></div>
         </div>
       </div>
 
@@ -2853,6 +2855,12 @@
 
   document.querySelectorAll('a[data-goto]').forEach(a=>{
     a.addEventListener('click', (e)=>{
+      // Links marked target="_blank" are meant to open a fresh tab. Calling
+      // preventDefault() on those would cancel exactly that, so leave them
+      // entirely to the browser -- the new tab reads the hash on load and
+      // routes itself (see initialHash below).
+      if (a.target === '_blank') return;
+
       e.preventDefault();
       const target = a.dataset.goto;
       const href = a.getAttribute('href') || '';
@@ -2866,6 +2874,16 @@
     const input = document.querySelector('.mine-card[data-ticker="DRIFT"] .mine-input-row input');
     if(input){ input.value = '0.05'; input.focus(); }
   }); }
+
+  // A fresh tab opened at #launchpad or #mine (from a target="_blank" nav
+  // link) should land on that page immediately, not on home with the hash
+  // sitting unused. Anything else in the hash (e.g. #explore from a deeper
+  // link) is left alone -- it's not one of our three top-level pages, so we
+  // stay on home and let the browser's normal anchor scrolling handle it.
+  const initialHash = window.location.hash.replace('#', '');
+  if (pages[initialHash]) {
+    showPage(initialHash);
+  }
 })();
 
 </script>

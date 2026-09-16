@@ -21,6 +21,110 @@ const state = {
 
 const short = (a) => a.slice(0, 6) + '…' + a.slice(-4);
 
+/* ---------- token image upload (Pinata / IPFS) ----------
+   Optional by design. A launch must never be blocked by an image failing to
+   upload, so every failure path here degrades to "no image" rather than
+   stopping the launch.
+
+   The JWT below sits in client-side code and is readable by anyone who views
+   source. Scope it to file-write only in the Pinata dashboard -- never admin.
+   Worst case with a write-only key is wasted storage quota; an admin key
+   would let someone delete every token image on the platform.              */
+
+const PINATA_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiJiMTEzOGI5MC1iMDczLTQyYWUtODZiNy03NTQ2ZWVkMDc3YjYiLCJlbWFpbCI6ImJvbHV3YXRpZmVvbHVzYXlvQHlhaG9vLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJwaW5fcG9saWN5Ijp7InJlZ2lvbnMiOlt7ImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxLCJpZCI6IkZSQTEifSx7ImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxLCJpZCI6Ik5ZQzEifV0sInZlcnNpb24iOjF9LCJtZmFfZW5hYmxlZCI6ZmFsc2UsInN0YXR1cyI6IkFDVElWRSJ9LCJhdXRoZW50aWNhdGlvblR5cGUiOiJzY29wZWRLZXkiLCJzY29wZWRLZXlLZXkiOiI0NjMxZmVjMjVhZTBlYzQ0NGE1ZCIsInNjb3BlZEtleVNlY3JldCI6IjM1NGUwMzcwYTMwYTEwNjlhYWFkZGMyNGQwYzI0M2ZlZDIwYjEyZmUxN2U0ZGY5ZDc0NzE2OWE5NTJlZTA1NzUiLCJleHAiOjE4MjEwOTc1MjJ9.vwxVw-gHimImph28AKZ_LqpqCNTd9o2Q0r2iHQZqT1U';
+const PINATA_GATEWAY = 'https://gateway.pinata.cloud/ipfs/';
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2MB, matching the form's own copy
+
+let uploadedImageUrl = '';
+
+async function uploadToPinata(file) {
+  if (!PINATA_JWT || PINATA_JWT.startsWith('PASTE_')) {
+    throw new Error('Image uploads are not configured yet.');
+  }
+
+  const body = new FormData();
+  body.append('file', file);
+  body.append('pinataMetadata', JSON.stringify({ name: file.name }));
+
+  const res = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${PINATA_JWT}` },
+    body,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Pinata ${res.status}: ${text.slice(0, 120)}`);
+  }
+
+  const { IpfsHash } = await res.json();
+  if (!IpfsHash) throw new Error('Pinata returned no hash.');
+  return PINATA_GATEWAY + IpfsHash;
+}
+
+function wireImageUpload() {
+  const box     = document.getElementById('imgBox');
+  const input   = document.getElementById('imgInput');
+  const preview = document.getElementById('imgPreview');
+  const icon    = document.getElementById('imgIcon');
+  const label   = document.getElementById('imgLabel');
+  if (!box || !input) return;
+
+  const setLabel = (html) => { if (label) label.innerHTML = html; };
+
+  async function handle(file) {
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setLabel('That file is not an image. Pick a PNG, JPG, GIF or WebP.');
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      const mb = (file.size / 1024 / 1024).toFixed(1);
+      setLabel(`That image is ${mb}MB. The limit is 2MB — try a smaller one.`);
+      return;
+    }
+
+    // Show it immediately; the upload can take a moment.
+    if (preview) {
+      preview.src = URL.createObjectURL(file);
+      preview.style.display = 'block';
+      if (icon) icon.style.display = 'none';
+    }
+    setLabel('Uploading…');
+
+    try {
+      uploadedImageUrl = await uploadToPinata(file);
+      setLabel(`${file.name} &middot; <span style="color:var(--gold, #3ddc84)">ready</span>`);
+    } catch (err) {
+      console.error('Image upload failed:', err);
+      uploadedImageUrl = '';
+      // Deliberately not a blocking error: the launch can still go ahead.
+      setLabel(
+        'Image upload failed, so this token will launch without one.<br>' +
+        '<span style="color:var(--text-faint); font-size:11.5px;">Click to try again.</span>'
+      );
+    }
+  }
+
+  box.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => handle(input.files[0]));
+
+  ['dragenter', 'dragover'].forEach((ev) =>
+    box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.style.borderColor = 'var(--gold, #3ddc84)';
+    })
+  );
+  ['dragleave', 'drop'].forEach((ev) =>
+    box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.style.borderColor = '';
+    })
+  );
+  box.addEventListener('drop', (e) => handle(e.dataTransfer?.files?.[0]));
+}
+
 /* ---------- error messages ----------
    Ethers reports a reverted call as "missing revert data" or a bare custom
    error selector. Neither means anything to someone trying to buy a token.
@@ -262,7 +366,14 @@ function readForm() {
   const dividendBps  = taxOn ? pct('divBps2') : 0n;
 
   const desc = document.getElementById('tokenDesc')?.value.trim() || '';
-  const metadata = desc ? JSON.stringify({ description: desc }) : '';
+
+  // uploadedImageUrl is set by the Pinata upload below. It is optional: if
+  // nothing was uploaded, or the upload failed, we simply omit the field and
+  // the launch proceeds without an image.
+  const meta = {};
+  if (desc) meta.description = desc;
+  if (uploadedImageUrl) meta.image = uploadedImageUrl;
+  const metadata = Object.keys(meta).length ? JSON.stringify(meta) : '';
 
   return {
     name:   document.getElementById('tokenName').value.trim(),
@@ -396,13 +507,22 @@ async function fetchLaunches() {
     ]);
 
     let description = '';
-    try { description = meta ? (JSON.parse(meta).description || '') : ''; } catch {}
+    let image = '';
+    try {
+      const m = meta ? JSON.parse(meta) : {};
+      description = m.description || '';
+      // Only http(s) and ipfs URLs. Anything else -- javascript:, data: --
+      // is attacker-supplied and must never reach an <img src>.
+      const raw = typeof m.image === 'string' ? m.image.trim() : '';
+      if (/^https?:\/\//i.test(raw)) image = raw;
+      else if (/^ipfs:\/\//i.test(raw)) image = PINATA_GATEWAY + raw.slice(7);
+    } catch {}
 
     const progress = Number((collected * 10000n) / ethers.parseEther('0.004')) / 100;
 
     return {
       curveAddr, tokenAddr, creator, referralId,
-      name, symbol, description,
+      name, symbol, description, image,
       collected,
       graduated,
       progress: Math.min(progress, 100),
@@ -440,7 +560,13 @@ function renderLive() {
     card.className = 'token-card';
     card.innerHTML = `
       <div class="tc-head">
-        <div class="tc-icon">◆</div>
+        <div class="tc-icon">${
+          t.image
+            ? `<img src="${escapeHtml(t.image)}" alt="" loading="lazy"
+                 style="width:100%; height:100%; object-fit:cover; border-radius:inherit;"
+                 onerror="this.replaceWith(document.createTextNode('◆'))">`
+            : '◆'
+        }</div>
         <div class="tc-id">
           <div class="tc-name">${escapeHtml(t.name)}</div>
           <div class="tc-ticker mono">${escapeHtml(t.symbol)}</div>
@@ -879,12 +1005,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { capture: true });
   });
 
-  // Original script declares these switches but never binds them.
+  // index.html's own wireToggle() already binds taxSwitch, divSwitch and
+  // refSwitch to reveal their panels (adds the 'show' class) -- it does not
+  // need a second listener here. The block this replaces ran in the capture
+  // phase and called stopImmediatePropagation(), which silently prevented
+  // wireToggle()'s own listener from ever running: the switch still flipped
+  // green, but taxPanel/divPanel/refPanel never got the 'show' class, so the
+  // sliders and the referrer address box stayed hidden. That was the bug.
+  //
+  // Any .switch NOT already wired by index.html (there are currently none,
+  // but future toggles may add one without wiring it) still needs a plain
+  // fallback so it is visually responsive, added non-capturing so it never
+  // runs before -- or blocks -- wireToggle().
+  const WIRED_BY_HTML = new Set(['taxSwitch', 'divSwitch', 'refSwitch']);
   document.querySelectorAll('.switch').forEach((sw) => {
-    sw.addEventListener('click', (e) => {
-      e.stopImmediatePropagation();
-      sw.classList.toggle('on');
-    }, { capture: true });
+    if (WIRED_BY_HTML.has(sw.id)) return; // wireToggle() already owns this one
+    sw.addEventListener('click', () => sw.classList.toggle('on'));
   });
 
   // Only self-mode dividends are implemented. Mark the rest clearly rather
@@ -907,6 +1043,7 @@ document.addEventListener('DOMContentLoaded', () => {
   refreshExplore();
   renderReferrals();
   startAutoRefresh();
+  wireImageUpload();
 
   console.log('NO SLEEP app.js loaded');
 });
