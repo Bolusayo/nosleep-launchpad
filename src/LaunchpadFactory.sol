@@ -89,6 +89,9 @@ contract LaunchpadFactory is Ownable2Step, ReentrancyGuard {
         uint16 burnBps;
         uint16 marketingBps;
         uint16 dividendBps;
+        /// 0 = pay holders in the token itself, 1 = pay holders in ETH.
+        /// Matches FeeSplitter.DividendMode. Fixed for the life of the token.
+        uint8 dividendMode;
         string metadata;
     }
 
@@ -119,7 +122,8 @@ contract LaunchpadFactory is Ownable2Step, ReentrancyGuard {
                 burnBps: p.burnBps,
                 marketingBps: p.marketingBps,
                 dividendBps: p.dividendBps,
-                splitterDeployer: splitterDeployer
+                splitterDeployer: splitterDeployer,
+                dividendMode: p.dividendMode
             })
         );
 

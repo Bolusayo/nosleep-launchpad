@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {BondingCurve} from "./BondingCurve.sol";
+import {FeeSplitter} from "./FeeSplitter.sol";
 
 /// @notice Holds BondingCurve's bytecode so the factory doesn't have to.
 ///         Without this the factory exceeds the 24,576-byte EIP-170 limit.
@@ -35,6 +36,7 @@ contract CurveDeployer {
         uint16 marketingBps;
         uint16 dividendBps;
         address splitterDeployer;
+        uint8 dividendMode;
     }
 
     function deploy(Args calldata a) external returns (BondingCurve curve) {
@@ -57,7 +59,8 @@ contract CurveDeployer {
             a.burnBps,
             a.marketingBps,
             a.dividendBps,
-            a.splitterDeployer
+            a.splitterDeployer,
+            FeeSplitter.DividendMode(a.dividendMode)
         );
     }
 }

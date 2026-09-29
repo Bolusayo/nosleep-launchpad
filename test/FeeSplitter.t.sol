@@ -34,7 +34,8 @@ contract FeeSplitterTest is Test {
             2000,
             3000,
             THRESHOLD,
-            FeeSplitter.BurnMode.Threshold
+            FeeSplitter.BurnMode.Threshold,
+            FeeSplitter.DividendMode.SelfToken
         );
         // addLiquidity() sizes its swap against the pair's reserves, so these
         // tests need a real pool rather than a token with no market. Mirrors
@@ -70,7 +71,8 @@ contract FeeSplitterTest is Test {
             2000,
             2000,
             THRESHOLD,
-            FeeSplitter.BurnMode.Threshold
+            FeeSplitter.BurnMode.Threshold,
+            FeeSplitter.DividendMode.SelfToken
         );
     }
 
@@ -85,7 +87,8 @@ contract FeeSplitterTest is Test {
             2000,
             3000,
             THRESHOLD,
-            FeeSplitter.BurnMode.Threshold
+            FeeSplitter.BurnMode.Threshold,
+            FeeSplitter.DividendMode.SelfToken
         );
     }
 
@@ -260,7 +263,8 @@ contract FeeSplitterTest is Test {
             2000,
             3000,
             THRESHOLD,
-            FeeSplitter.BurnMode.Weekly
+            FeeSplitter.BurnMode.Weekly,
+            FeeSplitter.DividendMode.SelfToken
         );
 
         assertFalse(weekly.burnDue(), "first window has not elapsed");
@@ -283,7 +287,8 @@ contract FeeSplitterTest is Test {
             2000,
             3000,
             THRESHOLD,
-            FeeSplitter.BurnMode.Weekly
+            FeeSplitter.BurnMode.Weekly,
+            FeeSplitter.DividendMode.SelfToken
         );
 
         vm.prank(curve);

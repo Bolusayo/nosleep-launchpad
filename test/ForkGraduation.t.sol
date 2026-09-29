@@ -6,6 +6,7 @@ import {BondingCurve} from "../src/BondingCurve.sol";
 import {MemeToken} from "../src/MemeToken.sol";
 import {IUniswapV2Router, IUniswapV2Factory} from "../src/interfaces/IUniswapV2Router.sol";
 import {SplitterDeployer} from "../src/SplitterDeployer.sol";
+import {FeeSplitter} from "../src/FeeSplitter.sol";
 
 interface IERC20Min {
     function balanceOf(address) external view returns (uint256);
@@ -76,7 +77,8 @@ contract ForkGraduationTest is Test {
             0,
             0,
             0,
-            address(splitterDeployer)
+            address(splitterDeployer),
+            FeeSplitter.DividendMode.SelfToken
         );
         VQ = c.VIRTUAL_QUOTE();
         QT = c.QUOTE_TARGET();
@@ -100,7 +102,8 @@ contract ForkGraduationTest is Test {
             1000,
             2000,
             3000,
-            address(splitterDeployer)
+            address(splitterDeployer),
+            FeeSplitter.DividendMode.SelfToken
         );
         VQ = c.VIRTUAL_QUOTE();
         QT = c.QUOTE_TARGET();

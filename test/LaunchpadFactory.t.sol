@@ -9,6 +9,7 @@ import {MemeToken} from "../src/MemeToken.sol";
 import {MockV2Router} from "../src/mocks/MockV2Router.sol";
 import {CurveDeployer} from "../src/CurveDeployer.sol";
 import {SplitterDeployer} from "../src/SplitterDeployer.sol";
+import {FeeSplitter} from "../src/FeeSplitter.sol";
 
 contract LaunchpadFactoryTest is Test {
     SplitterDeployer internal splitterDeployer;
@@ -57,7 +58,8 @@ contract LaunchpadFactoryTest is Test {
                 0,
                 0,
                 0,
-                address(splitterDeployer)
+                address(splitterDeployer),
+                FeeSplitter.DividendMode.SelfToken
             ).QUOTE_TARGET();
         vm.deal(creator, 100 ether);
         vm.deal(trader, 100 ether);
@@ -79,6 +81,7 @@ contract LaunchpadFactoryTest is Test {
             burnBps: 0,
             marketingBps: 0,
             dividendBps: 0,
+            dividendMode: 0,
             metadata: ""
         });
     }

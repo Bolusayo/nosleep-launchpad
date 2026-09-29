@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {MemeToken} from "./MemeToken.sol";
 import {FeeSplitter} from "./FeeSplitter.sol";
 import {DividendVault} from "./DividendVault.sol";
+import {EthDividendVault} from "./EthDividendVault.sol";
 import {IUniswapV2Router} from "./interfaces/IUniswapV2Router.sol";
 
 /// @notice Holds FeeSplitter and DividendVault bytecode so BondingCurve
@@ -21,6 +22,7 @@ contract SplitterDeployer {
         uint16 dividendBps;
         uint256 threshold;
         FeeSplitter.BurnMode burnMode;
+        FeeSplitter.DividendMode dividendMode;
         address[] excluded;
     }
 
@@ -34,7 +36,12 @@ contract SplitterDeployer {
     /// FeeSplitter records its deployer as msg.sender, so this contract — not
     /// the curve — is what may call setDividendVault. It does so here, once,
     /// before returning.
-    function deploy(Args calldata a) external returns (FeeSplitter splitter, DividendVault vault) {
+    /// Returns the vault as a plain address because which contract it is
+    /// depends on the mode: DividendVault pays the token itself,
+    /// EthDividendVault pays ETH. Both expose the same onBalanceChange hook,
+    /// which is all MemeToken needs, so the token is wired identically either
+    /// way.
+    function deploy(Args calldata a) external returns (FeeSplitter splitter, address vault) {
         splitter = new FeeSplitter(
             a.token,
             a.router,
@@ -44,10 +51,14 @@ contract SplitterDeployer {
             a.marketingBps,
             a.dividendBps,
             a.threshold,
-            a.burnMode
+            a.burnMode,
+            a.dividendMode
         );
 
-        vault = new DividendVault(a.token, address(splitter), a.excluded);
-        splitter.setDividendVault(address(vault));
+        vault = a.dividendMode == FeeSplitter.DividendMode.Eth
+            ? address(new EthDividendVault(a.token, address(splitter), a.excluded))
+            : address(new DividendVault(a.token, address(splitter), a.excluded));
+
+        splitter.setDividendVault(vault);
     }
 }

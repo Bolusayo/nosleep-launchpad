@@ -6,6 +6,7 @@ import {BondingCurve} from "../src/BondingCurve.sol";
 import {MemeToken} from "../src/MemeToken.sol";
 import {MockV2Router} from "../src/mocks/MockV2Router.sol";
 import {SplitterDeployer} from "../src/SplitterDeployer.sol";
+import {FeeSplitter} from "../src/FeeSplitter.sol";
 
 contract BondingCurveTest is Test {
     SplitterDeployer internal splitterDeployer;
@@ -44,7 +45,8 @@ contract BondingCurveTest is Test {
             0,
             0,
             0,
-            address(splitterDeployer)
+            address(splitterDeployer),
+            FeeSplitter.DividendMode.SelfToken
         );
         token = curve.token();
 
@@ -158,7 +160,8 @@ contract BondingCurveTest is Test {
             0,
             0,
             0,
-            address(splitterDeployer)
+            address(splitterDeployer),
+            FeeSplitter.DividendMode.SelfToken
         );
         uint256 cap = capped.maxBuyPerWallet();
         assertEq(cap, (capped.curveSupply() * 200) / 10_000);
@@ -219,7 +222,8 @@ contract BondingCurveTest is Test {
             0,
             0,
             0,
-            address(splitterDeployer)
+            address(splitterDeployer),
+            FeeSplitter.DividendMode.SelfToken
         );
 
         vm.prank(alice);
@@ -276,7 +280,8 @@ contract BondingCurveTest is Test {
             1000,
             2000,
             3000,
-            address(splitterDeployer)
+            address(splitterDeployer),
+            FeeSplitter.DividendMode.SelfToken
         );
         MemeToken tt = taxed.token();
 
@@ -324,7 +329,8 @@ contract BondingCurveTest is Test {
             1000,
             2000,
             3000,
-            address(splitterDeployer)
+            address(splitterDeployer),
+            FeeSplitter.DividendMode.SelfToken
         );
         MemeToken tt = taxed.token();
 
@@ -359,7 +365,8 @@ contract BondingCurveTest is Test {
             1000,
             2000,
             3000,
-            address(splitterDeployer)
+            address(splitterDeployer),
+            FeeSplitter.DividendMode.SelfToken
         );
         MemeToken tt = taxed.token();
 
@@ -403,7 +410,8 @@ contract BondingCurveTest is Test {
             1000,
             2000,
             3000,
-            address(splitterDeployer)
+            address(splitterDeployer),
+            FeeSplitter.DividendMode.SelfToken
         );
         MemeToken tt = taxed.token();
 

@@ -7,7 +7,6 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MemeToken} from "./MemeToken.sol";
 import {FeeSplitter} from "./FeeSplitter.sol";
-import {DividendVault} from "./DividendVault.sol";
 import {ReferralNFT} from "./ReferralNFT.sol";
 import {SplitterDeployer} from "./SplitterDeployer.sol";
 import {IUniswapV2Router, IUniswapV2Factory, IUniswapV2Pair, IWETH} from "./interfaces/IUniswapV2Router.sol";
@@ -40,13 +39,20 @@ contract BondingCurve is ReentrancyGuard {
     bool public graduated;
 
     IUniswapV2Router public immutable router;
+    /// What holders receive from the dividend share: the token itself, or
+    /// ETH. Chosen by the launcher, fixed for the life of the token.
+    FeeSplitter.DividendMode public immutable dividendMode;
+
     /// Holds FeeSplitter/DividendVault bytecode. See SplitterDeployer.
     SplitterDeployer public immutable splitterDeployer;
     address public lpToken;
     uint256 public lpAmount;
 
     FeeSplitter public splitter;
-    DividendVault public dividendVault;
+    /// Plain address, not a typed vault: which contract this is depends on
+    /// the dividend mode chosen at launch. Both vault types expose the same
+    /// onBalanceChange hook, which is all the token needs.
+    address public dividendVault;
 
     address public immutable marketing;
     uint16 public immutable liquidityBps;
@@ -91,10 +97,12 @@ contract BondingCurve is ReentrancyGuard {
         uint16 burnBps_,
         uint16 marketingBps_,
         uint16 dividendBps_,
-        address splitterDeployer_
+        address splitterDeployer_,
+        FeeSplitter.DividendMode dividendMode_
     ) {
         router = IUniswapV2Router(router_);
         splitterDeployer = SplitterDeployer(splitterDeployer_);
+        dividendMode = dividendMode_;
         factory = factory_;
         token = new MemeToken(
             name_, symbol_, maxSupplyTokens, address(this), creator_, buyTaxBps_, sellTaxBps_, taxDurationDays_
@@ -327,16 +335,17 @@ contract BondingCurve is ReentrancyGuard {
                 dividendBps: dividendBps,
                 threshold: curveSupply / 10_000, // 0.01% of curve supply
                 burnMode: FeeSplitter.BurnMode.Threshold,
+                dividendMode: dividendMode,
                 excluded: ex
             })
         ) returns (
-            FeeSplitter s, DividendVault v
+            FeeSplitter s, address v
         ) {
             splitter = s;
             dividendVault = v;
             token.setTaxCollector(address(s));
-            token.setExempt(address(v), true);
-            token.setDividendVault(address(v));
+            token.setExempt(v, true);
+            token.setDividendVault(v);
             emit SplitterDeployed(address(s));
         } catch {}
     }
