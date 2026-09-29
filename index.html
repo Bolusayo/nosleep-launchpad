@@ -334,6 +334,8 @@
   .qty{display:flex; align-items:center; border:1px solid var(--line); font-family:'JetBrains Mono',monospace;}
   .qty button{background:var(--panel); border:none; color:var(--phosphor); font-size:16px; width:44px; height:44px; cursor:pointer; transition:background .2s;}
   .qty button:hover{background:rgba(62,240,140,.1);}
+  .qty button:disabled{opacity:.3; cursor:not-allowed;}
+  .qty button:disabled:hover{background:var(--panel);}
   .qty input{width:100%; text-align:center; background:transparent; border:none; color:var(--cream); font-family:'JetBrains Mono',monospace; font-size:15px;}
   .qty input:focus{outline:none;}
 
@@ -1453,9 +1455,9 @@
           <div class="mint-field">
             <div class="row"><span>Quantity</span><span id="maxNote">max 1 per wallet</span></div>
             <div class="qty">
-              <button onclick="stepQty(-1)">−</button>
+              <button id="qtyMinus" onclick="stepQty(-1)">−</button>
               <input type="text" id="qtyInput" value="1" readonly>
-              <button onclick="stepQty(1)">+</button>
+              <button id="qtyPlus" onclick="stepQty(1)">+</button>
             </div>
           </div>
 
@@ -1753,7 +1755,6 @@
             <span class="snipe-cap-label">wallet cap</span>
             <div class="snipe-bar"><div class="fill" id="snipeFill"></div></div>
           </div>
-          <div class="field-note">Selling is never capped. Buys over the limit are rejected, not queued. The deployer's launch buy above is exempt — everyone after is capped until graduation.</div>
         </div>
       </div>
 
@@ -1772,7 +1773,7 @@
             <input type="text" id="refWallet" placeholder="0x... · referral code · @handle" style="font-family:'JetBrains Mono',monospace; font-size:12.5px;">
           </div>
           <div class="field-note" style="margin-top:0;">
-            <b>How it works:</b> if a referral is attached at deploy, that wallet is written into the token's contract permanently. Every time this token trades — on the curve or after graduation on the DEX — <b>30% of the 2.0% trade fee</b> (0.6% of trade volume) routes straight to the referrer, and the remaining 70% goes to the protocol. This split is fixed for the lifetime of the token: it doesn't expire, decay, or require the referrer to do anything after the token launches. One referrer per token, set once at deploy and impossible to change afterward — same as the max supply.
+            <b>How it works:</b> if a referral is attached at deploy, that wallet is written into the token's contract permanently. Every time this token trades — on the curve or after graduation on the DEX — <b>10% of the 2.0% trade fee</b> (0.2% of trade volume) routes straight to the referrer, and the remaining 90% goes to the protocol. This split is fixed for the lifetime of the token: it doesn't expire, decay, or require the referrer to do anything after the token launches. One referrer per token, set once at deploy and impossible to change afterward — same as the max supply.
           </div>
           <div class="field-note">Leave this blank to launch without a referral; the full 2.0% fee then goes to the protocol as usual.</div>
         </div>
@@ -2239,12 +2240,29 @@
     mintQty = 1;
     document.getElementById('qtyInput').value = mintQty;
     updateMintPrice();
+    syncQtyButtons();
   }
   function stepQty(d){
-    const max = mintMode==='free' ? 1 : 10;
-    mintQty = Math.min(max, Math.max(1, mintQty+d));
+    mintQty = Math.min(maxQty(), Math.max(1, mintQty+d));
     document.getElementById('qtyInput').value = mintQty;
     updateMintPrice();
+    syncQtyButtons();
+  }
+
+  function maxQty(){ return mintMode==='free' ? 1 : 10; }
+
+  // Free mint is one per wallet, so the stepper has nowhere to go. Disable
+  // the buttons rather than leaving them looking clickable but dead -- the
+  // same applies at either end of the paid range.
+  function syncQtyButtons(){
+    const minus = document.getElementById('qtyMinus');
+    const plus  = document.getElementById('qtyPlus');
+    if(!minus || !plus) return;
+    minus.disabled = mintQty <= 1;
+    plus.disabled  = mintQty >= maxQty();
+    const why = mintMode==='free' ? 'Free mint is limited to 1 per wallet' : '';
+    minus.title = minus.disabled ? why : '';
+    plus.title  = plus.disabled  ? why : '';
   }
   function updateMintPrice(){
     const el2 = document.getElementById('totalPrice');
@@ -2252,6 +2270,7 @@
     el2.textContent = mintMode==='free' ? 'FREE' : `$${(mintQty*20).toLocaleString()}`;
   }
   updateMintPrice();
+  syncQtyButtons();
 
   let walletConnected = false;
   function doMint(){
