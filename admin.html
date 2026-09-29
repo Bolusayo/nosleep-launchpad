@@ -128,7 +128,8 @@
 /* ------------------------------------------------------------------ *
  * Fill this in after deployment.                                     *
  * ------------------------------------------------------------------ */
-const FACTORY = '0xb166AbFd3A0bc0014fC60F5cc83170961e6B7e0f';
+const FACTORY = '0x9509Ca715ECDE9C8801809121619a319F84C701F';
+
 const CHAIN = {
   chainId: '0x1237',                       // 4663
   chainName: 'Robinhood Chain',
@@ -162,7 +163,6 @@ const sameAddr = (a, b) =>
 
 /* Read-only view works without a wallet. */
 async function readState() {
-  $('factory').textContent = FACTORY;
   const ro = new ethers.JsonRpcProvider(CHAIN.rpcUrls[0]);
   const c = new ethers.Contract(FACTORY, ABI, ro);
 

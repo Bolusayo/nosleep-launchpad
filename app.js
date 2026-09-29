@@ -215,6 +215,100 @@ function setConnectLabel(text) {
   });
 }
 
+/// Menu anchored under whichever connect button was clicked. Built on
+/// demand rather than living in the markup, because there is one button in
+/// the nav and another in the launchpad header.
+function toggleWalletMenu(btn) {
+  const open = document.getElementById('walletMenu');
+  if (open) { open.remove(); return; }
+
+  const rect = btn.getBoundingClientRect();
+  const menu = document.createElement('div');
+  menu.id = 'walletMenu';
+  menu.style.cssText = [
+    'position:fixed',
+    `top:${rect.bottom + 6}px`,
+    `right:${Math.max(8, window.innerWidth - rect.right)}px`,
+    'z-index:99998',
+    'min-width:210px',
+    'background:#101410',
+    'border:1px solid rgba(255,255,255,.12)',
+    'border-radius:8px',
+    "font-family:'JetBrains Mono',monospace",
+    'font-size:12px',
+    'box-shadow:0 10px 30px rgba(0,0,0,.5)',
+    'overflow:hidden',
+  ].join(';');
+
+  const head = document.createElement('div');
+  head.style.cssText =
+    'padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.08);color:#7d8a7d;word-break:break-all;line-height:1.5;';
+  head.textContent = state.address;
+  menu.appendChild(head);
+
+  const item = (label, onClick) => {
+    const el = document.createElement('div');
+    el.textContent = label;
+    el.style.cssText = 'padding:10px 12px;cursor:pointer;color:#dfe6df;';
+    el.addEventListener('mouseenter', () => { el.style.background = 'rgba(255,255,255,.05)'; });
+    el.addEventListener('mouseleave', () => { el.style.background = 'transparent'; });
+    el.addEventListener('click', async () => { menu.remove(); await onClick(); });
+    menu.appendChild(el);
+    return el;
+  };
+
+  item('Copy address', async () => {
+    try {
+      await navigator.clipboard.writeText(state.address);
+      notify('Address copied');
+    } catch {
+      notify('Your browser blocked clipboard access', 'error');
+    }
+  });
+
+  item('View on explorer', async () => {
+    const base = (CHAIN.blockExplorerUrls && CHAIN.blockExplorerUrls[0]) || '';
+    if (!base) { notify('No explorer configured', 'error'); return; }
+    window.open(base.replace(/\/+$/, '') + '/address/' + state.address, '_blank', 'noopener');
+  });
+
+  const dc = item('Disconnect', async () => disconnect());
+  dc.style.color = '#e06c5a';
+  dc.style.borderTop = '1px solid rgba(255,255,255,.08)';
+
+  document.body.appendChild(menu);
+
+  // Close on a click anywhere else, or on Escape.
+  setTimeout(() => {
+    const close = (ev) => {
+      if (menu.contains(ev.target)) return;
+      menu.remove();
+      document.removeEventListener('click', close);
+    };
+    document.addEventListener('click', close);
+  }, 0);
+
+  document.addEventListener('keydown', function esc(ev) {
+    if (ev.key === 'Escape') { menu.remove(); document.removeEventListener('keydown', esc); }
+  });
+}
+
+/// Clears this site's connection state.
+///
+/// A page cannot revoke a wallet's permission -- only the wallet can do that,
+/// from its own UI. What this does is forget the address and drop the signer
+/// so the site stops acting as though someone is connected. That matters on
+/// a shared machine, and it is what every dApp's "Disconnect" does.
+function disconnect() {
+  document.getElementById('walletMenu')?.remove();
+  state.signer = null;
+  state.address = null;
+  state.provider = null;
+  setConnectLabel('Connect wallet');
+  renderReferrals();
+  notify('Disconnected from this site. Your wallet still has it authorised — revoke there if you want that too.');
+}
+
 function notify(msg, kind = 'info') {
   console.log('[notify]', msg);
 
@@ -313,9 +407,16 @@ const TARGET_ETH = '4';
 
 // Robinhood Chain mainnet, deployed at block 53540363.
 // Factory owner and fee recipient: 0x2bb8CE046631b50149a74Dc9902402A614A6D8F3
+/* ===================================================================
+   REDEPLOY: these are the only two lines to change here, and there is
+   a matching FACTORY line near the top of token.html and of admin.html.
+   This build expects the ETH-dividend factory -- the one whose
+   createToken takes sixteen fields. Pointing it at the old factory
+   breaks launching.
+   =================================================================== */
 const ADDR = {
-  factory: '0xb166AbFd3A0bc0014fC60F5cc83170961e6B7e0f',
-  nft:     '0x971Da0341aE6C47C13D971E06580BA98F49B4e69',
+  factory: '0x9509Ca715ECDE9C8801809121619a319F84C701F',
+  nft:     '0xBbA85b92355C37D8B67B6FBb75aa33F4F00f2ba0',
 };
 
 const FACTORY_ABI = [
@@ -323,7 +424,7 @@ const FACTORY_ABI = [
   'function launchCount() view returns (uint256)',
   'function getLaunches(uint256,uint256) view returns ((address,address,address,uint256,uint64)[])',
   'event TokenLaunched(address indexed creator, address indexed token, address curve, uint256 referralId, uint256 devBuy)',
-  'function createToken((string,string,uint256,uint256,address,uint256,uint16,uint16,uint32,address,uint16,uint16,uint16,uint16,string)) payable returns (address,address,uint256)',
+  'function createToken((string,string,uint256,uint256,address,uint256,uint16,uint16,uint32,address,uint16,uint16,uint16,uint16,uint8,string)) payable returns (address,address,uint256)',
   'function metadataURI(address) view returns (string)',
 ];
 
@@ -367,6 +468,11 @@ function readForm() {
 
   const desc = document.getElementById('tokenDesc')?.value.trim() || '';
 
+  // 0 = holders are paid in the token itself, 1 = holders are paid in ETH.
+  // Must match FeeSplitter.DividendMode, and is fixed for the token's life.
+  const divSel = document.querySelector('#divAsset .seg-opt.active')?.dataset.v || 'self';
+  const dividendMode = divSel === 'quote' ? 1 : 0;
+
   // uploadedImageUrl is set by the Pinata upload below. It is optional: if
   // nothing was uploaded, or the upload failed, we simply omit the field and
   // the launch proceeds without an image.
@@ -381,6 +487,7 @@ function readForm() {
     maxSupply, capBps, referrer, devBuy,
     buyTaxBps, sellTaxBps, taxDays,
     marketing, liquidityBps, burnBps, marketingBps, dividendBps,
+    dividendMode,
     taxOn,
     metadata,
   };
@@ -409,6 +516,7 @@ async function deployToken() {
       f.name, f.symbol, f.maxSupply, f.capBps, f.referrer, 0n,
       f.buyTaxBps, f.sellTaxBps, f.taxDays,
       f.marketing, f.liquidityBps, f.burnBps, f.marketingBps, f.dividendBps,
+      f.dividendMode,
       f.metadata
     ];
 
@@ -463,18 +571,164 @@ const CURVE_ABI = [
   'function sell(uint256,uint256)',
   'function dividendVault() view returns (address)',
   'function splitter() view returns (address)',
+  'function dividendMode() view returns (uint8)',
+  'function burnBps() view returns (uint16)',
+  'function dividendBps() view returns (uint16)',
+  'function liquidityBps() view returns (uint16)',
+  'function marketingBps() view returns (uint16)',
 ];
 
 const TOKEN_ABI = [
   'function name() view returns (string)',
   'function symbol() view returns (string)',
+  'function totalSupply() view returns (uint256)',
   'function balanceOf(address) view returns (uint256)',
   'function approve(address,uint256) returns (bool)',
+  'function buyTaxBps() view returns (uint16)',
+  'function sellTaxBps() view returns (uint16)',
+  'function dexPair() view returns (address)',
+];
+
+const PAIR_ABI = [
+  'function getReserves() view returns (uint112,uint112,uint32)',
+  'function token0() view returns (address)',
 ];
 
 function readProvider() {
   return state.provider ?? new ethers.JsonRpcProvider(CHAIN.rpcUrls[0]);
 }
+
+/* ---------- price, formatting, and the curve sparkline ---------- */
+
+/// ETH/USD, so cards and the token page can show a dollar market cap.
+///
+/// One request per tab, cached for ten minutes. This is the only third-party
+/// call the page makes, and everything that uses it falls back to plain ETH
+/// when it fails -- an ad blocker or a rate limit must never blank a card.
+const USD_TTL_MS = 10 * 60 * 1000;
+let _usdRate = null;
+
+async function ethUsd() {
+  if (_usdRate !== null) return _usdRate;
+
+  try {
+    const cached = JSON.parse(sessionStorage.getItem('nosleep.ethusd') || 'null');
+    if (cached && Date.now() - cached.at < USD_TTL_MS) {
+      _usdRate = cached.v;
+      return _usdRate;
+    }
+  } catch { /* private mode, or storage disabled */ }
+
+  try {
+    const r = await fetch(
+      'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd',
+      { cache: 'no-store' },
+    );
+    if (!r.ok) throw new Error(r.status);
+    const j = await r.json();
+    const v = Number(j?.ethereum?.usd);
+    if (!Number.isFinite(v) || v <= 0) throw new Error('bad rate');
+    _usdRate = v;
+    try {
+      sessionStorage.setItem('nosleep.ethusd', JSON.stringify({ v, at: Date.now() }));
+    } catch {}
+    return v;
+  } catch {
+    _usdRate = 0;   // 0 means "asked and failed" -- do not ask again this tab
+    return 0;
+  }
+}
+
+function compact(n) {
+  return Number(n).toLocaleString(undefined, { notation: 'compact', maximumFractionDigits: 2 });
+}
+
+/// A value in ETH, shown in dollars when a rate is known and in ETH when not.
+function moneyFromEth(eth, rate) {
+  if (rate > 0) return '$' + compact(eth * rate);
+  return compact(eth) + ' ETH';
+}
+
+/* The curve every token follows, drawn once per card.
+ *
+ * With virtual reserves the price is (VIRTUAL_QUOTE + raised)^2 / (5.25 * s),
+ * so the shape is the same quadratic for every token -- only the marker moves.
+ * That makes it pure arithmetic: no RPC call, nothing to load, and it cannot
+ * disagree with the progress number printed beside it.                        */
+function curveSvg(progressPct) {
+  const W = 300, H = 64, PAD = 4;
+  const at = (e) => Math.pow(3 + e, 2);           // price, unnormalised
+  const lo = at(0), hi = at(4);
+
+  const pt = (e) => {
+    const x = PAD + (e / 4) * (W - PAD * 2);
+    const y = (H - 6) - ((at(e) - lo) / (hi - lo)) * (H - 16);
+    return [x, y];
+  };
+
+  const done = Math.max(0, Math.min(100, progressPct)) / 100;
+  const line = (from, to) => {
+    const out = [];
+    const STEPS = 28;
+    for (let i = 0; i <= STEPS; i++) {
+      const e = (from + ((to - from) * i) / STEPS) * 4;
+      const [x, y] = pt(e);
+      out.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    }
+    return out.join(' ');
+  };
+
+  const [dx, dy] = pt(done * 4);
+
+  return `
+    <svg class="tc-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points="${line(done, 1)}" fill="none" stroke="rgba(233,230,219,.22)" stroke-width="2.5"
+                stroke-linecap="round"/>
+      <polyline points="${line(0, done)}" fill="none" stroke="var(--gold)" stroke-width="2.5"
+                stroke-linecap="round"/>
+      <circle cx="${dx.toFixed(1)}" cy="${dy.toFixed(1)}" r="4.5" fill="var(--gold)"/>
+    </svg>`;
+}
+
+/* Card styles live here rather than in index.html so that a change to the
+   Explore grid is a one-file upload. index.html is megabytes of inlined
+   artwork; re-uploading it to change a border colour is not a fair trade. */
+function injectCardStyles() {
+  if (document.getElementById('nosleep-card-css')) return;
+  const el = document.createElement('style');
+  el.id = 'nosleep-card-css';
+  el.textContent = `
+    .token-card{cursor:pointer;}
+    .token-card:hover{border-color:var(--gold-dim);}
+    .tc-top{display:flex;gap:11px;align-items:flex-start;}
+    .tc-avatar{width:42px;height:42px;flex:none;border-radius:10px;overflow:hidden;
+      background:var(--panel-2);border:1px solid var(--line-soft);
+      display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--gold);}
+    .tc-avatar img{width:100%;height:100%;object-fit:cover;}
+    .tc-title{font-family:'JetBrains Mono',monospace;font-weight:600;font-size:15px;
+      line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .tc-sub{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-faint);margin-top:3px;}
+    .tc-sub b{color:var(--gold);font-weight:500;}
+    .tc-desc{font-size:12.5px;color:var(--text-dim);line-height:1.5;margin:12px 0 2px;
+      display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+    .tc-spark{width:100%;height:64px;display:block;margin:10px 0 6px;overflow:visible;}
+    .tc-figs{display:flex;justify-content:space-between;gap:10px;align-items:baseline;
+      font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-faint);}
+    .tc-figs b{color:var(--text);font-size:13px;font-weight:600;}
+    .tc-figs .pct b{color:var(--gold);}
+    .tc-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;}
+    .tc-pill{display:inline-flex;align-items:center;gap:5px;
+      font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-dim);
+      background:var(--panel-2);border:1px solid var(--line-soft);
+      border-radius:20px;padding:4px 9px;white-space:nowrap;}
+    .tc-pill .d{width:6px;height:6px;border-radius:50%;background:var(--gold);flex:none;}
+    .tc-pill.grad{color:var(--gold);border-color:var(--gold-dim);}
+    .ca-line{cursor:pointer;}
+  `;
+  document.head.appendChild(el);
+}
+
+let USD_RATE = 0;
 
 function ageLabel(ts) {
   const s = Math.floor(Date.now() / 1000) - Number(ts);
@@ -482,6 +736,77 @@ function ageLabel(ts) {
   if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
+}
+
+/* Immutable facts about a token -- name, ticker, supply, tax, artwork.
+ *
+ * These cannot change after launch, so they are fetched once and kept. The
+ * Explore grid refreshes every 15 seconds; re-reading eight constants per
+ * token on every pass was most of the RPC bill and bought nothing. Only the
+ * two values that actually move are re-read below.                          */
+const TOKEN_META = new Map();
+
+async function tokenMeta(provider, factory, tokenAddr, curveAddr) {
+  const key = tokenAddr.toLowerCase();
+  const hit = TOKEN_META.get(key);
+  if (hit) return hit;
+
+  const token = new ethers.Contract(tokenAddr, TOKEN_ABI, provider);
+  const curve = new ethers.Contract(curveAddr, CURVE_ABI, provider);
+
+  const [name, symbol, totalSupply, buyTaxBps, sellTaxBps, burnBps, dividendBps, dividendMode, pair, meta] =
+    await Promise.all([
+      token.name(),
+      token.symbol(),
+      token.totalSupply(),
+      token.buyTaxBps().catch(() => 0n),
+      token.sellTaxBps().catch(() => 0n),
+      curve.burnBps().catch(() => 0n),
+      curve.dividendBps().catch(() => 0n),
+      // Curves deployed before ETH dividends existed have no such getter.
+      // Absent means the only mode there was: paid in the token itself.
+      curve.dividendMode().catch(() => 0n),
+      token.dexPair().catch(() => ethers.ZeroAddress),
+      factory.metadataURI(tokenAddr).catch(() => ''),
+    ]);
+
+  let description = '';
+  let image = '';
+  try {
+    const m = meta ? JSON.parse(meta) : {};
+    description = m.description || '';
+    // Only http(s) and ipfs URLs. Anything else -- javascript:, data: -- is
+    // attacker-supplied and must never reach an <img src>.
+    const rawImg = typeof m.image === 'string' ? m.image.trim() : '';
+    if (/^https?:\/\//i.test(rawImg)) image = rawImg;
+    else if (/^ipfs:\/\//i.test(rawImg)) image = PINATA_GATEWAY + rawImg.slice(7);
+  } catch {}
+
+  const rec = {
+    name, symbol, description, image, pair,
+    supply: Number(ethers.formatEther(totalSupply)),
+    buyTaxBps: Number(buyTaxBps),
+    sellTaxBps: Number(sellTaxBps),
+    burnBps: Number(burnBps),
+    dividendBps: Number(dividendBps),
+    dividendMode: Number(dividendMode),   // 0 = the token itself, 1 = ETH
+  };
+  TOKEN_META.set(key, rec);
+  return rec;
+}
+
+/// Price in ETH per token, once the curve has closed and trading moved to the
+/// pool. The curve's own reserves freeze at graduation, so reading them after
+/// that would quote a price that stopped moving weeks ago.
+async function pairPriceEth(provider, pairAddr, tokenAddr) {
+  if (!pairAddr || pairAddr === ethers.ZeroAddress) return 0;
+  const pair = new ethers.Contract(pairAddr, PAIR_ABI, provider);
+  const [[r0, r1], t0] = await Promise.all([pair.getReserves(), pair.token0()]);
+  const tokenIsZero = t0.toLowerCase() === tokenAddr.toLowerCase();
+  const tokenRes = tokenIsZero ? r0 : r1;
+  const wethRes  = tokenIsZero ? r1 : r0;
+  if (tokenRes === 0n) return 0;
+  return Number(ethers.formatEther(wethRes)) / Number(ethers.formatEther(tokenRes));
 }
 
 async function fetchLaunches() {
@@ -496,35 +821,43 @@ async function fetchLaunches() {
   return Promise.all(raw.map(async (l) => {
     const [curveAddr, tokenAddr, creator, referralId, createdAt] = l;
     const curve = new ethers.Contract(curveAddr, CURVE_ABI, provider);
-    const token = new ethers.Contract(tokenAddr, TOKEN_ABI, provider);
 
-    const [name, symbol, collected, graduated, meta] = await Promise.all([
-      token.name(),
-      token.symbol(),
+    const [m, collected, graduated] = await Promise.all([
+      tokenMeta(provider, factory, tokenAddr, curveAddr),
       curve.ethCollected(),
       curve.graduated(),
-      factory.metadataURI(tokenAddr).catch(() => ''),
     ]);
 
-    let description = '';
-    let image = '';
-    try {
-      const m = meta ? JSON.parse(meta) : {};
-      description = m.description || '';
-      // Only http(s) and ipfs URLs. Anything else -- javascript:, data: --
-      // is attacker-supplied and must never reach an <img src>.
-      const raw = typeof m.image === 'string' ? m.image.trim() : '';
-      if (/^https?:\/\//i.test(raw)) image = raw;
-      else if (/^ipfs:\/\//i.test(raw)) image = PINATA_GATEWAY + raw.slice(7);
-    } catch {}
+    // Progress must be measured against the same target the label prints,
+    // or a card reads 100% while the curve has barely moved. This divided by
+    // the testnet target (0.004) long after the label was corrected to 4.
+    const progress = Number((collected * 10000n) / ethers.parseEther(TARGET_ETH)) / 100;
 
-    const progress = Number((collected * 10000n) / ethers.parseEther('0.004')) / 100;
+    // Constant product with virtual reserves gives a closed form for the
+    // price at any point on the curve, so no extra call is needed to show a
+    // market cap: price = (VIRTUAL_QUOTE + raised)^2 / (5.25 * curveSupply).
+    const raised = Number(ethers.formatEther(collected));
+    const curveSupply = m.supply * 0.8;
+    let priceEth = curveSupply > 0 ? Math.pow(3 + raised, 2) / (5.25 * curveSupply) : 0;
+
+    if (graduated) {
+      try {
+        const live = await pairPriceEth(provider, m.pair, tokenAddr);
+        if (live > 0) priceEth = live;
+      } catch { /* fall back to the graduation price */ }
+    }
 
     return {
-      curveAddr, tokenAddr, creator, referralId,
-      name, symbol, description, image,
+      curveAddr, tokenAddr, creator, referralId, createdAt,
+      name: m.name, symbol: m.symbol, description: m.description, image: m.image,
+      supply: m.supply,
+      buyTaxBps: m.buyTaxBps, sellTaxBps: m.sellTaxBps,
+      burnBps: m.burnBps, dividendBps: m.dividendBps,
+      dividendMode: m.dividendMode,
       collected,
       graduated,
+      priceEth,
+      mcapEth: priceEth * m.supply,
       progress: Math.min(progress, 100),
       status: graduated ? 'graduated' : (progress < 10 ? 'new' : 'curve'),
       age: ageLabel(createdAt),
@@ -558,84 +891,74 @@ function renderLive() {
   for (const t of rows) {
     const card = document.createElement('div');
     card.className = 'token-card';
+    card.tabIndex = 0;
+    card.setAttribute('role', 'link');
+    card.setAttribute('aria-label', `${t.name} (${t.symbol}) — open token page`);
+
+    const href = `token.html?a=${encodeURIComponent(t.tokenAddr)}`;
+
+    const pills = ['<span class="tc-pill"><i class="d"></i>Robinhood Chain</span>',
+                   '<span class="tc-pill">&#8646; ETH</span>'];
+    if (t.graduated)       pills.push('<span class="tc-pill grad">Graduated</span>');
+    if (t.burnBps > 0)     pills.push('<span class="tc-pill">&#128293; Buyback &amp; burn</span>');
+    if (t.dividendBps > 0) {
+      pills.push(`<span class="tc-pill">&#128176; Dividends in ${t.dividendMode === 1 ? 'ETH' : escapeHtml(t.symbol)}</span>`);
+    }
+    if (t.buyTaxBps || t.sellTaxBps) {
+      pills.push(`<span class="tc-pill">Tax ${t.buyTaxBps / 100}/${t.sellTaxBps / 100}%</span>`);
+    }
+
+    const blurb = t.description
+      ? escapeHtml(t.description.slice(0, 160))
+      : `${escapeHtml(t.name)}, paired with ETH.`;
+
+    const right = t.graduated
+      ? '<span class="pct"><b>Trading on Uniswap</b></span>'
+      : `<span class="pct"><b>${t.progress.toFixed(1)}%</b> to graduation</span>`;
+
     card.innerHTML = `
-      <div class="tc-head">
-        <div class="tc-icon">${
+      <div class="tc-top">
+        <div class="tc-avatar">${
           t.image
             ? `<img src="${escapeHtml(t.image)}" alt="" loading="lazy"
-                 style="width:100%; height:100%; object-fit:cover; border-radius:inherit;"
                  onerror="this.replaceWith(document.createTextNode('◆'))">`
-            : '◆'
+            : '&#9670;'
         }</div>
-        <div class="tc-id">
-          <div class="tc-name">${escapeHtml(t.name)}</div>
-          <div class="tc-ticker mono">${escapeHtml(t.symbol)}</div>
+        <div style="min-width:0; flex:1;">
+          <div class="tc-title">${escapeHtml(t.name)}</div>
+          <div class="tc-sub"><b>$${escapeHtml(t.symbol)}</b> &middot; ${escapeHtml(t.age)}</div>
         </div>
-        <div class="tc-badge">${t.graduated ? 'Graduated' : 'Curve'}</div>
       </div>
-      <div class="mono" style="font-size:12px; color:var(--text-dim); margin:10px 0;">
-        ${Number(ethers.formatEther(t.collected)).toFixed(6)} / ${TARGET_ETH} ETH · ${t.age}
+
+      <div class="tc-desc">${blurb}</div>
+
+      ${curveSvg(t.progress)}
+
+      <div class="tc-figs">
+        <span>Mkt cap <b>${escapeHtml(moneyFromEth(t.mcapEth, USD_RATE))}</b></span>
+        ${right}
       </div>
-       ${t.description ? `<div style="font-size:12px; color:var(--text-dim); margin:8px 0; line-height:1.5;">${escapeHtml(t.description.slice(0, 140))}</div>` : ''}
-      <div class="snipe-bar"><div class="fill" style="width:${t.progress}%; background:var(--gold);"></div></div>
-      ${t.graduated ? `
-      <div class="mono" style="margin-top:14px; padding:10px; text-align:center; background:rgba(62,240,140,.08); border:1px solid var(--line-soft); color:var(--gold); font-size:12px;">Trading on Uniswap · curve closed</div>
-      ` : `
-      <div class="tc-actions" style="display:flex; gap:0; margin-top:14px;">
-        <button class="side-btn buy active" style="flex:1; padding:9px; background:rgba(62,240,140,.12); color:var(--gold); border:1px solid var(--line-soft); cursor:pointer; font-family:inherit;">Buy</button>
-        <button class="side-btn sell" style="flex:1; padding:9px; background:transparent; color:var(--text-dim); border:1px solid var(--line-soft); cursor:pointer; font-family:inherit;">Sell</button>
-      </div>
-      <div style="display:flex; gap:8px; margin-top:10px;">
-        <input class="trade-amt" placeholder="0.0 ETH" style="flex:1; padding:10px; background:var(--panel-2); border:1px solid var(--line-soft); color:var(--text); font-family:'JetBrains Mono',monospace; font-size:12.5px;">
-        <button class="trade-go" style="padding:10px 14px; background:var(--gold); color:#0a0c0a; border:none; cursor:pointer; font-family:'JetBrains Mono',monospace; font-weight:600; font-size:12.5px;">Buy ${escapeHtml(t.symbol)}</button>
-      </div>
-      `}
-      <div class="mono" style="font-size:11px; color:var(--text-faint); margin-top:8px;">${short(t.tokenAddr)}
-      </div>
+
+      <div class="tc-pills">${pills.join('')}</div>
+
+      <div class="mono ca-line" data-addr="${escapeHtml(t.tokenAddr)}"
+           title="Click to copy the contract address"
+           style="font-size:11px; color:var(--text-faint); margin-top:12px;">${short(t.tokenAddr)}<span class="ca-copy" style="margin-left:6px; opacity:.55;">copy</span></div>
+
       <div class="div-slot"></div>
     `;
-    if (!t.graduated) {
-    let side = 'buy';
-    const buyBtn  = card.querySelector('.side-btn.buy');
-    const sellBtn = card.querySelector('.side-btn.sell');
-    const amtEl   = card.querySelector('.trade-amt');
-    const goBtn   = card.querySelector('.trade-go');
 
-    function setSide(s) {
-      side = s;
-      const on = s === 'buy';
-      buyBtn.style.background  = on ? 'rgba(62,240,140,.12)' : 'transparent';
-      buyBtn.style.color       = on ? 'var(--gold)' : 'var(--text-dim)';
-      sellBtn.style.background = on ? 'transparent' : 'rgba(209,87,74,.12)';
-      sellBtn.style.color      = on ? 'var(--text-dim)' : 'var(--red)';
-      amtEl.placeholder        = on ? '0.0 ETH' : `0.0 ${t.symbol}`;
-      goBtn.textContent        = on ? `Buy ${t.symbol}` : `Sell ${t.symbol}`;
-      goBtn.style.background   = on ? 'var(--gold)' : 'var(--red)';
-    }
-
-    buyBtn.addEventListener('click', () => setSide('buy'));
-    sellBtn.addEventListener('click', () => setSide('sell'));
-
-    goBtn.addEventListener('click', async () => {
-      const v = amtEl.value.trim();
-      if (!v || Number(v) <= 0) { notify('Enter an amount'); return; }
-      goBtn.disabled = true;
-      const label = goBtn.textContent;
-      goBtn.textContent = 'Working…';
-      try {
-        if (side === 'buy') await doBuy(t, v);
-        else                await doSell(t, v);
-        amtEl.value = '';
-      } catch (err) {
-        console.error(err);
-        notifyError(err, 'Trade failed');
-      } finally {
-        goBtn.disabled = false;
-        goBtn.textContent = label;
-      }
+    // The whole card is the link. Anything interactive inside it -- the
+    // copy line, a claim button -- opts out, so copying an address does not
+    // navigate away from the grid.
+    const open = () => { window.location.href = href; };
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('a, button, input, .ca-line')) return;
+      open();
     });
-    }
-
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
 
     // Graduated tokens may have claimable dividends. Checked lazily so an
     // absent vault never blocks the card from rendering.
@@ -645,14 +968,22 @@ function renderLive() {
 
         const slot = card.querySelector('.div-slot');
         const btn2 = document.createElement('button');
-        btn2.textContent = `Claim ${Number(ethers.formatUnits(amt, 18)).toLocaleString(undefined, {maximumFractionDigits: 2})} ${t.symbol}`;
+        // Both vaults hold 18-decimal values, but one pays the token and the
+        // other pays ETH. Labelling an ETH payout with the ticker would be a
+        // plain lie about what lands in the wallet.
+        const eth = t.dividendMode === 1;
+        const amountText = eth
+          ? Number(ethers.formatEther(amt)).toFixed(6)
+          : Number(ethers.formatUnits(amt, 18)).toLocaleString(undefined, { maximumFractionDigits: 2 });
+        btn2.textContent = `Claim ${amountText} ${eth ? 'ETH' : t.symbol}`;
         btn2.style.cssText = `
           width:100%; margin-top:10px; padding:10px;
-          background:rgba(201,162,39,.15); color:var(--gold);
-          border:1px solid var(--gold); cursor:pointer;
+          background:rgba(62,240,140,.12); color:var(--gold);
+          border:1px solid var(--gold-dim); cursor:pointer;
           font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600;
         `;
-        btn2.addEventListener('click', async () => {
+        btn2.addEventListener('click', async (e) => {
+          e.stopPropagation();
           btn2.disabled = true;
           const label = btn2.textContent;
           btn2.textContent = 'Claiming…';
@@ -668,7 +999,7 @@ function renderLive() {
         slot.appendChild(btn2);
       }).catch(() => { /* no vault on this token */ });
     }
-   
+
     grid.appendChild(card);
   }
 }
@@ -680,6 +1011,9 @@ async function refreshExplore() {
   if (_refreshing) return;
   _refreshing = true;
   try {
+    // Resolved before the grid is built so every card prints the same rate.
+    // Returns 0 when the lookup fails, and every caller falls back to ETH.
+    USD_RATE = await ethUsd();
     LIVE = await fetchLaunches();
     renderLive();
     console.log(`Explore: ${LIVE.length} live token(s)`);
@@ -695,8 +1029,8 @@ async function refreshExplore() {
    watching a curve fill saw a frozen page. It now polls -- but carefully:
 
    - paused when the tab is hidden, so a backgrounded tab costs no RPC calls
-   - paused while an amount is typed into any card, because renderLive()
-     rebuilds the grid with innerHTML and would wipe what you were typing
+   - paused while an amount is being typed, since renderLive() rebuilds the
+     grid with innerHTML and would wipe an in-progress entry
    - skipped if a refresh is already in flight                              */
 
 const REFRESH_MS = 15000;
@@ -728,80 +1062,6 @@ document.addEventListener('visibilitychange', () => {
   // Coming back to the tab: refresh once immediately rather than waiting.
   refreshExplore();
 });
-
-/* ---------- trading ---------- */
-
-const SLIPPAGE_BPS = 300n; // 3% tolerance
-
-/// Mirrors the contract's curve maths exactly, including ceilDiv rounding.
-
-async function curveState(curveAddr) {
-  const c = new ethers.Contract(curveAddr, CURVE_ABI, readProvider());
-  const [q, t] = await Promise.all([c.quoteReserve(), c.tokenReserve()]);
-  return { q, t };
-}
-
-async function doBuy(t, ethAmount) {
-  if (!state.signer) { await connect(); if (!state.signer) return; }
-
-  if (!/^\d*\.?\d+$/.test(ethAmount)) {
-    notify('Enter a valid number, e.g. 0.005');
-    return;
-  }
-  const value = ethers.parseEther(ethAmount);
-
-  // Check funds first — insufficient balance surfaces as an undecodable
-  // revert otherwise, which is impossible to diagnose.
-  const bal = await state.provider.getBalance(state.address);
-  if (bal < value) {
-    notify(`Insufficient balance — you have ${ethers.formatEther(bal)} ETH`);
-    return;
-  }
-
-  const curve = new ethers.Contract(t.curveAddr, CURVE_ABI, state.signer);
-
-  // Ask the contract for the exact quote instead of recomputing it here.
-  const [expected] = await curve.quoteBuy(value);
-  const minOut = (expected * (10000n - SLIPPAGE_BPS)) / 10000n;
-
-  await curve.buy.staticCall(minOut, { value, from: state.address });
-
-  notify(`Buying ~${Number(ethers.formatUnits(expected, 18)).toLocaleString()} ${t.symbol}`);
-  const tx = await curve.buy(minOut, { value });
-  await tx.wait();
-
-  notify(`Bought ${t.symbol}`);
-  await refreshExplore();
-}
-
-async function doSell(t, tokenAmount) {
-  if (!state.signer) { await connect(); if (!state.signer) return; }
-
-  const amount = ethers.parseUnits(tokenAmount, 18);
-  const token  = new ethers.Contract(t.tokenAddr, TOKEN_ABI, state.signer);
-
-  const bal = await token.balanceOf(state.address);
-  if (bal < amount) { notify(`You only hold ${ethers.formatUnits(bal, 18)} ${t.symbol}`); return; }
-
-  const curveRead = new ethers.Contract(t.curveAddr, CURVE_ABI, readProvider());
-  const expected  = await curveRead.quoteSell(amount);
-  const minOut   = (expected * (10000n - SLIPPAGE_BPS)) / 10000n;
-
-  notify('Approving…');
-  const approveTx = await token.approve(t.curveAddr, amount);
-  await approveTx.wait();
-
-  const curve = new ethers.Contract(t.curveAddr, CURVE_ABI, state.signer);
-  await curve.sell.staticCall(amount, minOut, { from: state.address });
-
-  notify(`Selling for ~${ethers.formatEther(expected)} ETH`);
-  const tx = await curve.sell(amount, minOut);
-  await tx.wait();
-
-  notify(`Sold ${t.symbol}`);
-  await refreshExplore();
-}
-
 
 /* ---------- dividends ---------- */
 
@@ -976,8 +1236,45 @@ async function renderReferrals() {
 /* ---------- wiring ---------- */
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Disconnected: connect. Connected: open a menu under the address, which
+  // is where people look for "disconnect" and leaves room for copy and
+  // explorer without crowding the header.
   document.querySelectorAll('.connect-btn').forEach((btn) => {
-    btn.addEventListener('click', connect);
+    btn.addEventListener('click', (e) => {
+      if (!state.address) { connect(); return; }
+      e.stopPropagation();
+      toggleWalletMenu(btn);
+    });
+  });
+
+  // Contract addresses are click-to-copy. Delegated from the document
+  // because renderLive() rebuilds every card on each refresh, so per-card
+  // listeners would be discarded and re-added constantly.
+  document.addEventListener('click', async (e) => {
+    const line = e.target.closest('.ca-line');
+    if (!line || !line.dataset.addr) return;
+
+    const badge = line.querySelector('.ca-copy');
+    const flash = (text) => {
+      if (!badge) return;
+      badge.textContent = text;
+      badge.style.opacity = '1';
+      setTimeout(() => { badge.textContent = 'copy'; badge.style.opacity = '.55'; }, 1400);
+    };
+
+    try {
+      await navigator.clipboard.writeText(line.dataset.addr);
+      flash('copied');
+    } catch {
+      // The clipboard API needs a secure context and can be refused.
+      // Select the text instead so it can still be copied by hand.
+      const r = document.createRange();
+      r.selectNodeContents(line);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(r);
+      flash('select it');
+    }
   });
 
   document.querySelector('.launch-btn')?.addEventListener('click', deployToken);
@@ -1023,23 +1320,31 @@ document.addEventListener('DOMContentLoaded', () => {
     sw.addEventListener('click', () => sw.classList.toggle('on'));
   });
 
-  // Only self-mode dividends are implemented. Mark the rest clearly rather
-  // than letting someone pick ETH and silently receive tokens.
+  // Self and ETH are both live on-chain. "Any ERC-20" and "Tokenized stock"
+  // are removed rather than greyed out: an arbitrary payout token means an
+  // arbitrary swap path, and a token that may have no liquidity at all on
+  // this chain. A visible option nobody can pick only invites questions.
   document.querySelectorAll('#divAsset .seg-opt').forEach((opt) => {
-    if (opt.dataset.v === 'self') return;
+    const v = opt.dataset.v;
 
-    opt.style.opacity       = '0.35';
-    opt.style.cursor        = 'not-allowed';
-    opt.title               = 'Not yet implemented — dividends pay in the token itself';
-    opt.textContent        += ' · soon';
+    if (v === 'self' || v === 'quote') {
+      opt.addEventListener('click', () => {
+        document.querySelectorAll('#divAsset .seg-opt')
+          .forEach((o) => o.classList.toggle('active', o === opt));
+        const note = document.getElementById('divNote');
+        if (!note) return;
+        note.innerHTML = v === 'quote'
+          ? '<b>ETH mode:</b> the dividend share is swapped to ETH and holders claim ETH. '
+            + 'Converts in slices of at most 1% of the pool per call.'
+          : '<b>Self mode:</b> holders accumulate more of the token automatically, no swap needed.';
+      });
+      return;
+    }
 
-    opt.addEventListener('click', (e) => {
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      notify('Only self-mode dividends are live. ETH, ERC-20 and stock payouts are coming.', 'error');
-    }, { capture: true });
+    opt.remove();
   });
 
+  injectCardStyles();
   refreshExplore();
   renderReferrals();
   startAutoRefresh();

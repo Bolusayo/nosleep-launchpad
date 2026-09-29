@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Token — NO SLEEP</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0a0c0a; --panel:#101310; --panel-2:#141712; --line:#20261f;
+    --line-soft:#171b16;
+    --phosphor:#3ef08c; --phosphor-dim:#1f7a4d; --cream:#e9e6db;
+    --muted:#7c8279; --muted-2:#4d5249; --red:#d1574a; --coffee:#c68b59;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--void);color:var(--cream);
+       font-family:'Source Serif 4',Georgia,serif;-webkit-font-smoothing:antialiased;
+       line-height:1.5;overflow-x:hidden}
+  .mono{font-family:var(--mono)}
+  a{color:inherit;text-decoration:none}
+  button{font-family:var(--mono);cursor:pointer}
+  input{font-family:var(--mono)}
+
+  .top{position:sticky;top:0;z-index:40;display:flex;align-items:center;
+       justify-content:space-between;gap:12px;padding:14px 20px;
+       background:rgba(10,12,10,.95);border-bottom:1px solid var(--line);
+       backdrop-filter:blur(6px)}
+  .brand{font-family:var(--mono);font-weight:700;font-size:15px;
+         display:flex;align-items:center;gap:8px}
+  .brand .dot{width:7px;height:7px;border-radius:50%;background:var(--phosphor);
+              box-shadow:0 0 8px var(--phosphor)}
+  .back{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+  .back:hover{color:var(--cream)}
+
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 20px 80px}
+  .layout{display:grid;gap:18px;align-items:start;
+          grid-template-columns:minmax(0,1fr) 340px;
+          grid-template-areas:"head side" "main side"}
+  .hd{grid-area:head;min-width:0} .mn{grid-area:main;min-width:0}
+  .aside{grid-area:side;position:sticky;top:78px;display:flex;flex-direction:column;gap:18px}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+         padding:18px;margin-bottom:18px}
+  .aside .panel{margin-bottom:0}
+  .panel h2{font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;
+            text-transform:uppercase;color:var(--muted);font-weight:500;margin-bottom:14px}
+
+  /* ---- header ---- */
+  .head{display:flex;gap:16px;align-items:flex-start}
+  .icon{width:64px;height:64px;border-radius:14px;background:var(--panel-2);
+        border:1px solid var(--line);display:flex;align-items:center;
+        justify-content:center;font-size:26px;color:var(--phosphor);
+        flex:none;overflow:hidden}
+  .icon img{width:100%;height:100%;object-fit:cover}
+  .titles{min-width:0;flex:1}
+  .titles h1{font-family:var(--mono);font-size:24px;font-weight:700;letter-spacing:-.01em;
+             line-height:1.2;word-break:break-word}
+  .sub{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-top:5px}
+  .sub b{color:var(--phosphor);font-weight:500}
+  .desc{font-size:14px;color:var(--muted);margin-top:12px;max-width:640px}
+
+  .pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .pill{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);
+        font-size:10.5px;color:var(--muted);background:var(--panel-2);
+        border:1px solid var(--line-soft);border-radius:20px;padding:4px 10px;white-space:nowrap}
+  .pill .d{width:6px;height:6px;border-radius:50%;background:var(--phosphor);flex:none}
+  .pill.grad{color:var(--phosphor);border-color:var(--phosphor-dim)}
+
+  /* ---- stats ---- */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .stat .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;
+           text-transform:uppercase;color:var(--muted-2)}
+  .stat .v{font-family:var(--mono);font-size:17px;font-weight:600;margin-top:6px;
+           word-break:break-all}
+  .stat .s{font-family:var(--mono);font-size:10.5px;color:var(--muted-2);margin-top:3px}
+
+  /* ---- progress ---- */
+  .bar{height:9px;background:var(--panel-2);border-radius:99px;overflow:hidden;margin:4px 0 10px}
+  .bar i{display:block;height:100%;background:var(--phosphor);
+         box-shadow:0 0 10px var(--phosphor-dim);transition:width .4s ease;width:0}
+  .barmeta{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;
+           font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+
+  /* ---- chart ---- */
+  .charthead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+             margin-bottom:6px;flex-wrap:wrap}
+  .charthead .t{font-family:var(--mono);font-size:15px;font-weight:600}
+  .charthead .c{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .charthead .c b{color:var(--phosphor)}
+  .charthead .c b.dn{color:var(--red)}
+  #chart{width:100%;height:220px;display:block}
+  #chartNote{font-family:var(--mono);font-size:11px;color:var(--muted-2);margin-top:8px}
+
+  /* ---- trade panel ---- */
+  .tabs{display:flex;margin-bottom:12px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .tabs button{flex:1;padding:10px;background:transparent;color:var(--muted);
+               border:none;font-size:12.5px;font-weight:600}
+  .tabs button.on.buy{background:rgba(62,240,140,.12);color:var(--phosphor)}
+  .tabs button.on.sell{background:rgba(209,87,74,.12);color:var(--red)}
+  .amt{display:flex;align-items:center;gap:8px;background:var(--panel-2);
+       border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .amt input{flex:1;min-width:0;background:transparent;border:none;outline:none;
+             color:var(--cream);font-size:15px}
+  .amt .unit{font-family:var(--mono);font-size:12px;color:var(--muted);flex:none}
+  .maxbtn{background:transparent;border:1px solid var(--line);border-radius:6px;
+          color:var(--muted);font-size:10.5px;padding:3px 7px}
+  .maxbtn:hover{color:var(--cream)}
+  .quick{display:flex;gap:6px;margin-top:8px}
+  .quick button{flex:1;background:var(--panel-2);border:1px solid var(--line);
+                border-radius:6px;color:var(--muted);font-size:11px;padding:6px 0}
+  .quick button:hover{color:var(--cream);border-color:var(--line-soft)}
+  .go{width:100%;margin-top:12px;padding:13px;border:none;border-radius:8px;
+      background:var(--phosphor);color:#08110c;font-size:13.5px;font-weight:700}
+  .go.sell{background:var(--red);color:#fff}
+  .go:disabled{opacity:.5;cursor:not-allowed}
+  .quoteline{font-family:var(--mono);font-size:11.5px;color:var(--muted);
+             margin-top:10px;min-height:17px;line-height:1.5}
+  .walletline{font-family:var(--mono);font-size:11px;color:var(--muted-2);margin-top:10px;
+              word-break:break-all}
+
+  /* ---- fees ---- */
+  .feerow{margin-bottom:12px}
+  .feerow:last-child{margin-bottom:0}
+  .feetop{display:flex;justify-content:space-between;gap:10px;
+          font-family:var(--mono);font-size:12px}
+  .feetop b{font-weight:600}
+  .feebar{height:4px;background:var(--panel-2);border-radius:99px;margin:6px 0 4px;overflow:hidden}
+  .feebar i{display:block;height:100%;background:var(--coffee);border-radius:99px}
+  .feesub{font-family:var(--mono);font-size:10.5px;color:var(--muted-2)}
+
+  /* ---- fee engine ---- */
+  .erow{display:flex;align-items:center;gap:14px;padding:12px 0;
+        border-bottom:1px solid var(--line)}
+  .erow:last-child{border-bottom:none}
+  .einfo{min-width:0;flex:1}
+  .ename{font-family:var(--mono);font-size:12.5px;color:var(--cream)}
+  .eamt{font-family:var(--mono);font-size:15px;font-weight:600;margin-top:2px}
+  .enote{font-family:var(--mono);font-size:10.5px;color:var(--muted-2);margin-top:3px;line-height:1.5}
+  .ebtn{flex:none;background:var(--panel-2);border:1px solid var(--phosphor-dim);
+        color:var(--phosphor);border-radius:7px;font-size:11.5px;padding:8px 12px}
+  .ebtn:hover:not(:disabled){background:rgba(62,240,140,.1)}
+  .ebtn:disabled{color:var(--muted-2);border-color:var(--line);cursor:not-allowed}
+
+  /* ---- tables and rows ---- */
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
+  th{text-align:left;color:var(--muted-2);font-weight:500;font-size:10.5px;
+     letter-spacing:.08em;text-transform:uppercase;padding:0 8px 10px}
+  td{padding:9px 8px;border-top:1px solid var(--line);color:var(--cream);white-space:nowrap}
+  td.buy{color:var(--phosphor)}
+  td.sell{color:var(--red)}
+  .empty{padding:22px 8px;color:var(--muted-2);font-family:var(--mono);font-size:12px}
+
+  .addr{display:flex;align-items:center;gap:8px;font-family:var(--mono);
+        font-size:12px;color:var(--muted);cursor:pointer;word-break:break-all;
+        justify-content:flex-end}
+  .addr:hover{color:var(--cream)}
+  .copy{font-size:10.5px;opacity:.55;border:1px solid var(--line);
+        border-radius:4px;padding:2px 6px;flex:none}
+
+  .rows > div{display:flex;justify-content:space-between;gap:14px;
+              padding:9px 0;border-bottom:1px solid var(--line);
+              font-family:var(--mono);font-size:12.5px}
+  .rows > div:last-child{border-bottom:none}
+  .rows .k{color:var(--muted);flex:none}
+  .rows .v{text-align:right;word-break:break-all;min-width:0}
+
+  .note{font-family:var(--mono);font-size:11.5px;color:var(--muted-2);margin-top:10px;line-height:1.6}
+
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);
+         background:var(--panel-2);border:1px solid var(--line);border-radius:8px;
+         padding:11px 16px;font-family:var(--mono);font-size:12.5px;color:var(--cream);
+         opacity:0;pointer-events:none;transition:all .2s ease;z-index:80;max-width:92vw;
+         text-align:center}
+  #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  #toast.err{border-color:var(--red);color:#ffb9b0}
+
+  /* On a phone the trade box belongs near the top -- underneath the name and
+     the pills, but above the charts and tables. Nobody should have to scroll
+     past a trade history to buy. */
+  @media (max-width:980px){
+    .layout{grid-template-columns:1fr;grid-template-areas:"head" "side" "main"}
+    .aside{position:static}
+  }
+  @media (max-width:760px){
+    .stats{grid-template-columns:1fr 1fr}
+    .head{flex-direction:column;gap:12px}
+    .wrap{padding:18px 14px 60px}
+    .scroll{overflow-x:auto}
+  }
+  @media (max-width:420px){
+    .stats{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <a href="index.html#launchpad" class="brand"><span class="dot"></span>NO SLEEP</a>
+  <a href="index.html#launchpad" class="back">&larr; back to launchpad</a>
+</div>
+
+<div class="wrap">
+ <div class="layout">
+
+  <!-- ============================ HEADER ============================ -->
+  <div class="hd">
+    <div class="panel" style="margin-bottom:0">
+      <div class="head">
+        <div class="icon" id="icon">&#9670;</div>
+        <div class="titles">
+          <h1 id="name">Loading…</h1>
+          <div class="sub" id="sub"></div>
+          <div class="pills" id="pills"></div>
+          <div class="desc" id="desc"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ MAIN ============================ -->
+  <div class="mn">
+    <div class="stats">
+      <div class="stat"><div class="k">Price</div><div class="v" id="price">—</div><div class="s" id="priceSub"></div></div>
+      <div class="stat"><div class="k">Market cap</div><div class="v" id="mcap">—</div><div class="s" id="mcapSub"></div></div>
+      <div class="stat"><div class="k">Raised</div><div class="v" id="raised">—</div><div class="s" id="raisedSub"></div></div>
+      <div class="stat"><div class="k">Holders</div><div class="v" id="holders">—</div><div class="s" id="holdersSub">counting…</div></div>
+    </div>
+
+    <div class="panel">
+      <h2>Progress to graduation</h2>
+      <div class="bar"><i id="bar"></i></div>
+      <div class="barmeta">
+        <span id="progLeft">—</span>
+        <span id="progRight">—</span>
+      </div>
+      <div class="note" id="progNote"></div>
+    </div>
+
+    <div class="panel">
+      <div class="charthead">
+        <div class="t" id="chartTitle">Price</div>
+        <div class="c" id="chartChange"></div>
+      </div>
+      <svg id="chart" viewBox="0 0 600 220" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <div id="chartNote">Reading trades from the chain…</div>
+    </div>
+
+    <div class="panel" id="enginePanel" style="display:none">
+      <h2>Fee engine</h2>
+      <div class="feesub" id="engineIntro" style="margin-bottom:8px"></div>
+      <div id="engineRows"></div>
+      <div class="note" id="engineNote"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Trade history</h2>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Type</th><th>ETH</th><th>Tokens</th><th>Trader</th><th>Block</th></tr>
+          </thead>
+          <tbody id="trades">
+            <tr><td colspan="5" class="empty">Loading trades…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note" id="tradeNote"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Contract</h2>
+      <div class="rows">
+        <div><span class="k">Token</span><span class="v addr" id="caToken">—</span></div>
+        <div><span class="k">Curve</span><span class="v addr" id="caCurve">—</span></div>
+        <div><span class="k">Creator</span><span class="v addr" id="caCreator">—</span></div>
+        <div><span class="k">Pair</span><span class="v addr" id="caPair">—</span></div>
+        <div><span class="k">Launched</span><span class="v" id="created">—</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============================ ASIDE ============================ -->
+  <div class="aside">
+
+    <div class="panel">
+      <h2 id="tradeTitle">Trade</h2>
+      <div id="tradeBox">
+        <div class="quoteline">Reading the curve…</div>
+      </div>
+    </div>
+
+    <div class="panel" id="claimPanel" style="display:none">
+      <h2>Your dividends</h2>
+      <div id="claimBody"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Where fees go</h2>
+      <div id="fees"><div class="feesub">Reading the curve…</div></div>
+    </div>
+
+  </div>
+
+ </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<script>
+/* ------------------------------------------------------------------ *
+ * Keep these in step with app.js. If the stack is redeployed, both    *
+ * files need the new factory address.                                 *
+ * ------------------------------------------------------------------ */
+const RPC      = 'https://rpc.mainnet.chain.robinhood.com';
+const FACTORY  = '0x9509Ca715ECDE9C8801809121619a319F84C701F';
+const EXPLORER = 'https://explorer.chain.robinhood.com';
+
+const CHAIN = {
+  chainId: '0x1237',                       // 4663
+  chainName: 'Robinhood Chain',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: [RPC],
+  blockExplorerUrls: [EXPLORER],
+};
+
+const TARGET_ETH   = 4;      // BondingCurve.QUOTE_TARGET
+const VIRTUAL_Q    = 3;      // BondingCurve.VIRTUAL_QUOTE
+const FEE_BPS      = 200;    // BondingCurve.FEE_BPS — 2% on every curve trade
+const SLIPPAGE_BPS = 300n;   // 3% tolerance, same as the launchpad
+const PINATA_GATEWAY = 'https://gateway.pinata.cloud/ipfs/';
+
+const FACTORY_ABI = [
+  'function getLaunches(uint256,uint256) view returns (tuple(address curve,address token,address creator,uint256 referralId,uint64 createdAt)[])',
+  'function launchCount() view returns (uint256)',
+  'function metadataURI(address) view returns (string)',
+];
+
+const CURVE_ABI = [
+  'function quoteReserve() view returns (uint256)',
+  'function tokenReserve() view returns (uint256)',
+  'function ethCollected() view returns (uint256)',
+  'function graduated() view returns (bool)',
+  'function curveSupply() view returns (uint256)',
+  'function maxBuyPerWallet() view returns (uint256)',
+  'function lpToken() view returns (address)',
+  'function liquidityBps() view returns (uint16)',
+  'function burnBps() view returns (uint16)',
+  'function marketingBps() view returns (uint16)',
+  'function dividendBps() view returns (uint16)',
+  'function referralBps() view returns (uint16)',
+  'function splitter() view returns (address)',
+  'function dividendMode() view returns (uint8)',
+  'function referralId() view returns (uint256)',
+  'function quoteBuy(uint256) view returns (uint256 tokensOut, uint256 ethAccepted)',
+  'function quoteSell(uint256) view returns (uint256)',
+  'function buy(uint256) payable',
+  'function sell(uint256,uint256)',
+  'event Bought(address indexed buyer, uint256 ethIn, uint256 tokensOut, uint256 fee)',
+  'event Sold(address indexed seller, uint256 tokensIn, uint256 ethOut, uint256 fee)',
+];
+
+const TOKEN_ABI = [
+  'function name() view returns (string)',
+  'function symbol() view returns (string)',
+  'function totalSupply() view returns (uint256)',
+  'function balanceOf(address) view returns (uint256)',
+  'function approve(address,uint256) returns (bool)',
+  'function buyTaxBps() view returns (uint16)',
+  'function sellTaxBps() view returns (uint16)',
+  'function taxEndsAt() view returns (uint64)',
+  'function dexPair() view returns (address)',
+  'event Transfer(address indexed from, address indexed to, uint256 value)',
+];
+
+const PAIR_ABI = [
+  'function getReserves() view returns (uint112,uint112,uint32)',
+  'function token0() view returns (address)',
+];
+
+const $ = (id) => document.getElementById(id);
+const short = (a) => a ? a.slice(0, 6) + '…' + a.slice(-4) : '—';
+const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const provider = new ethers.JsonRpcProvider(RPC);
+
+/* state shared between the panels */
+const S = {
+  tokenAddr: null, curveAddr: null, pair: null,
+  symbol: '', name: '', supply: 0,
+  graduated: false, priceEth: 0, usd: 0,
+  splitter: null, vault: null, dividendMode: 0,
+  signer: null, account: null,
+};
+
+/* ---------- small helpers ---------- */
+
+let _toastTimer = null;
+function toast(msg, isError) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = 'on' + (isError ? ' err' : '');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.className = ''; }, 4200);
+}
+
+function fmtEth(wei, dp = 6) {
+  return Number(ethers.formatEther(wei)).toLocaleString(undefined, {
+    minimumFractionDigits: 0, maximumFractionDigits: dp,
+  });
+}
+
+function compact(n) {
+  return Number(n).toLocaleString(undefined, { notation: 'compact', maximumFractionDigits: 2 });
+}
+
+function money(eth) {
+  return S.usd > 0 ? '$' + compact(eth * S.usd) : compact(eth) + ' ETH';
+}
+
+/**
+ * ETH/USD, so the page can price things the way people actually think about
+ * them. Cached per tab. Every caller falls back to ETH when this returns 0,
+ * so a blocked request costs a dollar sign and nothing else.
+ */
+async function ethUsd() {
+  try {
+    const c = JSON.parse(sessionStorage.getItem('nosleep.ethusd') || 'null');
+    if (c && Date.now() - c.at < 600000) return c.v;
+  } catch {}
+  try {
+    const r = await fetch(
+      'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd',
+      { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    const v = Number((await r.json())?.ethereum?.usd);
+    if (!Number.isFinite(v) || v <= 0) throw new Error('bad rate');
+    try { sessionStorage.setItem('nosleep.ethusd', JSON.stringify({ v, at: Date.now() })); } catch {}
+    return v;
+  } catch { return 0; }
+}
+
+/** Address comes from ?a=0x… — the page is shareable per token. */
+function tokenAddressFromUrl() {
+  const p = new URLSearchParams(window.location.search);
+  const a = (p.get('a') || p.get('token') || '').trim();
+  return ethers.isAddress(a) ? a : null;
+}
+
+/** Click-to-copy, with a fallback for when the clipboard API is refused. */
+function wireCopy(el, value) {
+  if (!value) return;
+  el.innerHTML = `${esc(short(value))}<span class="copy">copy</span>`;
+  el.title = value;
+  el.addEventListener('click', async () => {
+    const badge = el.querySelector('.copy');
+    try {
+      await navigator.clipboard.writeText(value);
+      badge.textContent = 'copied';
+    } catch {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const s = window.getSelection();
+      s.removeAllRanges(); s.addRange(r);
+      badge.textContent = 'select it';
+    }
+    setTimeout(() => { badge.textContent = 'copy'; }, 1400);
+  });
+}
+
+function ageLabel(ts) {
+  const s = Math.floor(Date.now() / 1000) - Number(ts);
+  if (s < 60)    return `${s}s ago`;
+  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+/**
+ * Finds the launch record for this token.
+ *
+ * getLaunches returns newest first, so this pages backwards until it finds a
+ * match rather than pulling every launch at once -- the list only grows.
+ */
+async function findLaunch(factory, tokenAddr) {
+  const want = tokenAddr.toLowerCase();
+  const PAGE = 50;
+  let offset = 0;
+
+  for (let i = 0; i < 40; i++) {           // 2000 launches, then give up
+    let page;
+    try { page = await factory.getLaunches(offset, PAGE); } catch { break; }
+    if (!page || page.length === 0) break;
+    for (const l of page) if (l.token.toLowerCase() === want) return l;
+    if (page.length < PAGE) break;
+    offset += PAGE;
+  }
+  return null;
+}
+
+/* ---------- log scanning ---------- *
+ * There is no indexer behind this page. Everything below is eth_getLogs
+ * against the public RPC, which caps how many blocks one call may span, so
+ * the range is walked in chunks and the chunk size backs off on rejection. */
+
+async function getLogsChunked(contract, filter, from, to, onChunk) {
+  let chunk = 40000;
+  let cursor = from;
+  while (cursor <= to) {
+    const end = Math.min(to, cursor + chunk - 1);
+    try {
+      const logs = await contract.queryFilter(filter, cursor, end);
+      onChunk(logs);
+      cursor = end + 1;
+    } catch (err) {
+      if (chunk <= 2000) throw err;      // not a range problem
+      chunk = Math.floor(chunk / 4);     // provider said no: ask for less
+    }
+  }
+}
+
+/**
+ * Block number at (or just after) a timestamp, by bisection.
+ *
+ * The launch record carries a timestamp, not a block. Knowing the exact
+ * starting block turns "scan the last N blocks and hope" into an exact scan
+ * of this token's whole life, which is what makes the holder count real
+ * rather than a guess.
+ */
+async function blockAtTime(targetTs, head) {
+  let lo = 0, hi = head, ans = 0;
+  for (let i = 0; i < 40 && lo <= hi; i++) {
+    const mid = Math.floor((lo + hi) / 2);
+    let b;
+    try { b = await provider.getBlock(mid); } catch { break; }
+    if (!b) break;
+    if (b.timestamp < targetTs) { lo = mid + 1; }
+    else { ans = mid; hi = mid - 1; }
+  }
+  return ans || Math.max(0, head - 200000);
+}
+
+/* ---------- price series ---------- *
+ * Reserves after every trade, reconstructed by replaying the events in
+ * reverse from the reserves the curve holds right now.
+ *
+ *   Bought(ethIn, tokensOut, fee)  ->  quote += ethIn,          token -= tokensOut
+ *   Sold(tokensIn, ethOut, fee)    ->  quote -= (ethOut + fee), token += tokensIn
+ *
+ * Undoing those in reverse gives the exact state at each earlier point, so
+ * the chart is derived from the chain rather than sampled from it.          */
+function priceSeries(qNow, tNow, events) {
+  const out = [];
+  let q = qNow, t = tNow;
+
+  for (let i = events.length - 1; i >= 0; i--) {
+    out.push({ block: events[i].block, q, t });
+    const e = events[i];
+    if (e.kind === 'Buy') { q -= e.eth; t += e.tokens; }
+    else                  { q += (e.eth + e.fee); t -= e.tokens; }
+  }
+  out.push({ block: events.length ? events[0].block : 0, q, t });
+  out.reverse();
+
+  return out.map((r) => {
+    const qq = Number(ethers.formatEther(r.q));
+    const tt = Number(ethers.formatEther(r.t));
+    return { block: r.block, price: tt > 0 ? qq / tt : 0 };
+  });
+}
+
+function drawChart(series) {
+  const svg = $('chart');
+  const W = 600, H = 220, PAD = 10;
+
+  if (!series || series.length < 2) {
+    svg.innerHTML = '';
+    $('chartNote').textContent =
+      'Not enough trades yet to draw a price history. The line appears after the first couple of trades.';
+    return;
+  }
+
+  const vals = series.map((p) => p.price);
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const span = hi - lo || hi || 1;
+
+  const x = (i) => PAD + (i / (series.length - 1)) * (W - PAD * 2);
+  const y = (v) => (H - PAD) - ((v - lo) / span) * (H - PAD * 2);
+
+  const line = series.map((p, i) => `${x(i).toFixed(1)},${y(p.price).toFixed(1)}`).join(' ');
+  const area = `${PAD},${H - PAD} ${line} ${(W - PAD).toFixed(1)},${H - PAD}`;
+
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%"   stop-color="#3ef08c" stop-opacity=".28"/>
+        <stop offset="100%" stop-color="#3ef08c" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <polygon points="${area}" fill="url(#g)"/>
+    <polyline points="${line}" fill="none" stroke="#3ef08c" stroke-width="2"
+              stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
+
+  const first = vals[0], last = vals[vals.length - 1];
+  if (first > 0) {
+    const chg = ((last / first) - 1) * 100;
+    const dn = chg < 0 ? ' class="dn"' : '';
+    $('chartChange').innerHTML =
+      `Over this chart <b${dn}>${chg >= 0 ? '+' : ''}${chg.toFixed(1)}%</b>`;
+  }
+}
+
+/* ---------- holders ---------- *
+ * Balances replayed from Transfer logs over the token's whole life. Exact
+ * when the full range can be scanned, and plainly marked unavailable when it
+ * cannot -- a made-up number here would be worse than a dash.               */
+async function countHolders(tokenAddr, fromBlock, head, excluded) {
+  const token = new ethers.Contract(tokenAddr, TOKEN_ABI, provider);
+  const bal = new Map();
+  const skip = new Set(excluded.filter(Boolean).map((a) => a.toLowerCase()));
+  skip.add(ethers.ZeroAddress.toLowerCase());
+  skip.add('0x000000000000000000000000000000000000dead');
+
+  const add = (a, v) => {
+    const k = a.toLowerCase();
+    if (skip.has(k)) return;
+    bal.set(k, (bal.get(k) ?? 0n) + v);
+  };
+
+  await getLogsChunked(token, token.filters.Transfer(), fromBlock, head, (logs) => {
+    for (const e of logs) {
+      add(e.args.from, -e.args.value);
+      add(e.args.to, e.args.value);
+    }
+  });
+
+  let n = 0;
+  for (const v of bal.values()) if (v > 0n) n++;
+  return n;
+}
+
+/* ---------- trade history ---------- */
+
+function renderTrades(rows, symbol, complete) {
+  const body = $('trades');
+  if (rows.length === 0) {
+    body.innerHTML = '<tr><td colspan="5" class="empty">No trades yet.</td></tr>';
+    $('tradeNote').textContent = 'Read directly from chain logs.';
+    return;
+  }
+
+  body.innerHTML = rows.slice(0, 40).map((r) => `
+    <tr>
+      <td class="${r.kind === 'Buy' ? 'buy' : 'sell'}">${r.kind}</td>
+      <td>${esc(fmtEth(r.eth))}</td>
+      <td>${esc(compact(ethers.formatEther(r.tokens)))} ${esc(symbol)}</td>
+      <td><a href="${EXPLORER}/address/${esc(r.who)}" target="_blank" rel="noopener">${esc(short(r.who))}</a></td>
+      <td>${r.block}</td>
+    </tr>`).join('');
+
+  $('tradeNote').textContent = complete
+    ? `${rows.length} trade${rows.length === 1 ? '' : 's'} since launch, read directly from chain logs.`
+    : `Showing the ${Math.min(rows.length, 40)} most recent trades. Older ones are outside the scanned window.`;
+}
+
+/* ---------- the trade panel ---------- */
+
+let side = 'buy';
+
+function renderTradePanel() {
+  const box = $('tradeBox');
+  $('tradeTitle').textContent = `Trade $${S.symbol || ''}`;
+
+  if (S.graduated) {
+    box.innerHTML = `
+      <div class="quoteline">
+        The curve is closed. Liquidity moved to Uniswap and the LP tokens were burned,
+        so this token now trades on the pool.
+      </div>
+      ${S.pair && S.pair !== ethers.ZeroAddress
+        ? `<a class="go" style="display:block;text-align:center;line-height:1.2;text-decoration:none"
+              href="${EXPLORER}/address/${esc(S.pair)}" target="_blank" rel="noopener">View the pool</a>`
+        : ''}`;
+    return;
+  }
+
+  if (!S.account) {
+    box.innerHTML = `
+      <div class="quoteline">Connect a wallet to buy or sell on the curve. One transaction, no bridging.</div>
+      <button class="go" id="connectBtn">Connect wallet</button>`;
+    $('connectBtn').addEventListener('click', connect);
+    return;
+  }
+
+  box.innerHTML = `
+    <div class="tabs">
+      <button class="buy ${side === 'buy' ? 'on' : ''}" data-side="buy">Buy</button>
+      <button class="sell ${side === 'sell' ? 'on' : ''}" data-side="sell">Sell</button>
+    </div>
+    <div class="amt">
+      <input id="amt" inputmode="decimal" placeholder="0.0" autocomplete="off">
+      <span class="unit">${side === 'buy' ? 'ETH' : esc(S.symbol)}</span>
+      <button class="maxbtn" id="maxBtn">MAX</button>
+    </div>
+    <div class="quick" id="quick"></div>
+    <div class="quoteline" id="quoteLine"></div>
+    <button class="go ${side === 'sell' ? 'sell' : ''}" id="goBtn">
+      ${side === 'buy' ? 'Buy' : 'Sell'} $${esc(S.symbol)}
+    </button>
+    <div class="walletline">Connected ${esc(short(S.account))}</div>`;
+
+  box.querySelectorAll('.tabs button').forEach((b) => {
+    b.addEventListener('click', () => { side = b.dataset.side; renderTradePanel(); });
+  });
+
+  const presets = side === 'buy' ? ['0.01', '0.05', '0.1', '0.5'] : ['25%', '50%', '75%', '100%'];
+  $('quick').innerHTML = presets.map((p) => `<button data-v="${p}">${p}</button>`).join('');
+  $('quick').querySelectorAll('button').forEach((b) => {
+    b.addEventListener('click', () => applyPreset(b.dataset.v));
+  });
+
+  $('maxBtn').addEventListener('click', () => applyPreset(side === 'buy' ? 'MAXETH' : '100%'));
+  $('amt').addEventListener('input', queueQuote);
+  $('goBtn').addEventListener('click', submitTrade);
+}
+
+async function applyPreset(v) {
+  try {
+    if (side === 'buy') {
+      if (v === 'MAXETH') {
+        const bal = await S.signer.provider.getBalance(S.account);
+        // Leave a little behind for gas, or the transaction cannot be sent.
+        const keep = ethers.parseEther('0.0005');
+        const use = bal > keep ? bal - keep : 0n;
+        $('amt').value = Number(ethers.formatEther(use)).toFixed(6);
+      } else {
+        $('amt').value = v;
+      }
+    } else {
+      const token = new ethers.Contract(S.tokenAddr, TOKEN_ABI, provider);
+      const bal = await token.balanceOf(S.account);
+      const pct = BigInt(parseInt(v, 10));
+      $('amt').value = ethers.formatEther((bal * pct) / 100n);
+    }
+    queueQuote();
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+let _quoteTimer = null;
+function queueQuote() {
+  clearTimeout(_quoteTimer);
+  _quoteTimer = setTimeout(showQuote, 250);
+}
+
+async function showQuote() {
+  const line = $('quoteLine');
+  if (!line) return;
+  const raw = ($('amt')?.value || '').trim();
+  if (!raw || Number(raw) <= 0) { line.textContent = ''; return; }
+  if (!/^\d*\.?\d+$/.test(raw)) { line.textContent = 'Enter a number, e.g. 0.05'; return; }
+
+  try {
+    const curve = new ethers.Contract(S.curveAddr, CURVE_ABI, provider);
+    if (side === 'buy') {
+      const value = ethers.parseEther(raw);
+      const [out, accepted] = await curve.quoteBuy(value);
+      const capped = accepted < value;
+      line.innerHTML =
+        `You receive &asymp; <b>${esc(compact(ethers.formatEther(out)))} ${esc(S.symbol)}</b>` +
+        `<br>Fee ${(FEE_BPS / 100).toFixed(0)}% &middot; slippage tolerance 3%` +
+        (capped ? `<br>Only ${esc(fmtEth(accepted, 6))} ETH is needed to finish the curve — the rest is refunded.` : '');
+    } else {
+      const amount = ethers.parseEther(raw);
+      const out = await curve.quoteSell(amount);
+      line.innerHTML =
+        `You receive &asymp; <b>${esc(fmtEth(out, 6))} ETH</b>` +
+        (S.usd > 0 ? ` (${esc(money(Number(ethers.formatEther(out))))})` : '') +
+        `<br>Fee ${(FEE_BPS / 100).toFixed(0)}% &middot; slippage tolerance 3%`;
+    }
+  } catch (err) {
+    line.textContent = 'Could not quote that amount.';
+  }
+}
+
+async function submitTrade() {
+  const btn = $('goBtn');
+  const raw = ($('amt')?.value || '').trim();
+  if (!raw || Number(raw) <= 0) { toast('Enter an amount'); return; }
+  if (!/^\d*\.?\d+$/.test(raw)) { toast('Enter a number, e.g. 0.05'); return; }
+
+  const label = btn.textContent;
+  btn.disabled = true;
+
+  try {
+    const curve = new ethers.Contract(S.curveAddr, CURVE_ABI, S.signer);
+
+    if (side === 'buy') {
+      const value = ethers.parseEther(raw);
+
+      // Check funds first -- an insufficient balance otherwise surfaces as an
+      // undecodable revert, which is impossible to diagnose from the UI.
+      const bal = await S.signer.provider.getBalance(S.account);
+      if (bal < value) {
+        toast(`Insufficient balance — you have ${fmtEth(bal, 6)} ETH`, true);
+        return;
+      }
+
+      const read = new ethers.Contract(S.curveAddr, CURVE_ABI, provider);
+      const [expected] = await read.quoteBuy(value);
+      const minOut = (expected * (10000n - SLIPPAGE_BPS)) / 10000n;
+
+      await curve.buy.staticCall(minOut, { value, from: S.account });
+
+      btn.textContent = 'Confirm in wallet…';
+      const tx = await curve.buy(minOut, { value });
+      btn.textContent = 'Buying…';
+      await tx.wait();
+      toast(`Bought ${S.symbol}`);
+    } else {
+      const amount = ethers.parseEther(raw);
+      const token  = new ethers.Contract(S.tokenAddr, TOKEN_ABI, S.signer);
+
+      const bal = await token.balanceOf(S.account);
+      if (bal < amount) {
+        toast(`You only hold ${compact(ethers.formatEther(bal))} ${S.symbol}`, true);
+        return;
+      }
+
+      const read = new ethers.Contract(S.curveAddr, CURVE_ABI, provider);
+      const expected = await read.quoteSell(amount);
+      const minOut = (expected * (10000n - SLIPPAGE_BPS)) / 10000n;
+
+      btn.textContent = 'Approving…';
+      await (await token.approve(S.curveAddr, amount)).wait();
+
+      await curve.sell.staticCall(amount, minOut, { from: S.account });
+
+      btn.textContent = 'Confirm in wallet…';
+      const tx = await curve.sell(amount, minOut);
+      btn.textContent = 'Selling…';
+      await tx.wait();
+      toast(`Sold ${S.symbol}`);
+    }
+
+    $('amt').value = '';
+    await refreshNumbers();
+  } catch (err) {
+    console.error(err);
+    const msg = err?.shortMessage || err?.info?.error?.message || err?.reason || err?.message || '';
+    toast(/user rejected|denied/i.test(msg) ? 'Cancelled in wallet' : (msg.slice(0, 140) || 'Trade failed'), true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+/* ---------- wallet ---------- */
+
+async function connect() {
+  if (!window.ethereum) {
+    toast('No wallet found in this browser', true);
+    return;
+  }
+  try {
+    const bp = new ethers.BrowserProvider(window.ethereum);
+    await bp.send('eth_requestAccounts', []);
+
+    const net = await bp.getNetwork();
+    if (net.chainId !== 4663n) {
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: CHAIN.chainId }],
+        });
+      } catch (e) {
+        if (e.code === 4902) {
+          await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [CHAIN] });
+        } else { throw e; }
+      }
+    }
+
+    const bp2 = new ethers.BrowserProvider(window.ethereum);
+    S.signer = await bp2.getSigner();
+    S.account = await S.signer.getAddress();
+    renderTradePanel();
+    loadClaim().catch(() => {});
+  } catch (err) {
+    console.error(err);
+    toast(err?.shortMessage || 'Could not connect', true);
+  }
+}
+
+if (window.ethereum?.on) {
+  window.ethereum.on('accountsChanged', (accs) => {
+    if (!accs || accs.length === 0) { S.signer = null; S.account = null; }
+    else { S.account = accs[0]; }
+    renderTradePanel();
+  });
+  window.ethereum.on('chainChanged', () => window.location.reload());
+}
+
+/* ---------- fees ---------- */
+
+function renderFees(f) {
+  const rows = [];
+  const bar = (pct) => `<div class="feebar"><i style="width:${Math.min(100, pct)}%"></i></div>`;
+
+  rows.push(`
+    <div class="feerow">
+      <div class="feetop"><span>Curve trading fee</span><b>${(FEE_BPS / 100).toFixed(0)}%</b></div>
+      ${bar(100)}
+      <div class="feesub">Charged on every buy and sell while the token is on the curve.${
+        f.referralId > 0n
+          ? ` ${(Number(f.referralBps) / 100).toFixed(0)}% of it goes to the referrer who introduced this launch.`
+          : ' No referrer on this launch, so all of it goes to the protocol.'
+      }</div>
+    </div>`);
+
+  if (f.buyTaxBps === 0 && f.sellTaxBps === 0) {
+    rows.push(`
+      <div class="feerow">
+        <div class="feetop"><span>Tax after graduation</span><b>None</b></div>
+        <div class="feesub">This token was launched untaxed, so once it graduates every
+          trade on Uniswap is free of any token-level fee.</div>
+      </div>`);
+  } else {
+    rows.push(`
+      <div class="feerow">
+        <div class="feetop"><span>Tax after graduation</span>
+          <b>${(f.buyTaxBps / 100)}% / ${(f.sellTaxBps / 100)}%</b></div>
+        <div class="feesub">Buy / sell, collected on pool trades and split as below.</div>
+      </div>`);
+
+    const split = [
+      ['&#128167; Liquidity',      f.liquidityBps, 'Paired back into the pool and the LP burned.'],
+      ['&#128293; Buyback &amp; burn', f.burnBps,  'Bought and sent to the burn address.'],
+      ['&#128176; Holder dividends',   f.dividendBps,
+        f.dividendMode === 1
+          ? 'Swapped to ETH, then claimable by holders in proportion to their balance.'
+          : 'Claimable by holders as more of the token, in proportion to their balance.'],
+      ['&#128100; Marketing',      f.marketingBps, 'Paid to the marketing wallet set at launch.'],
+    ];
+    for (const [label, bps, note] of split) {
+      if (!bps) continue;
+      rows.push(`
+        <div class="feerow">
+          <div class="feetop"><span>${label}</span><b>${(bps / 100).toFixed(0)}%</b></div>
+          ${bar(bps / 100)}
+          <div class="feesub">${note}</div>
+        </div>`);
+    }
+  }
+
+  $('fees').innerHTML = rows.join('');
+}
+
+/* ---------- numbers ---------- */
+
+async function refreshNumbers() {
+  const curve = new ethers.Contract(S.curveAddr, CURVE_ABI, provider);
+  const [qRes, tRes, collected, graduated, curveSupply] = await Promise.all([
+    curve.quoteReserve(), curve.tokenReserve(), curve.ethCollected(),
+    curve.graduated(), curve.curveSupply(),
+  ]);
+
+  S.graduated = graduated;
+
+  // Constant product with virtual reserves: price is the ratio of the two
+  // reserves. After graduation the curve's reserves stop moving, so the live
+  // price has to come from the pool instead.
+  let price = Number(ethers.formatEther(qRes)) / Number(ethers.formatEther(tRes));
+  let priceSource = 'on the curve';
+
+  if (graduated && S.pair && S.pair !== ethers.ZeroAddress) {
+    try {
+      const pair = new ethers.Contract(S.pair, PAIR_ABI, provider);
+      const [[r0, r1], t0] = await Promise.all([pair.getReserves(), pair.token0()]);
+      const isZero = t0.toLowerCase() === S.tokenAddr.toLowerCase();
+      const tr = isZero ? r0 : r1, wr = isZero ? r1 : r0;
+      if (tr > 0n) {
+        price = Number(ethers.formatEther(wr)) / Number(ethers.formatEther(tr));
+        priceSource = 'from the Uniswap pool';
+      }
+    } catch { /* keep the curve price */ }
+  }
+
+  S.priceEth = price;
+
+  $('price').textContent    = S.usd > 0 ? '$' + (price * S.usd).toPrecision(4) : price.toPrecision(4) + ' ETH';
+  $('priceSub').textContent = S.usd > 0 ? price.toPrecision(3) + ' ETH · ' + priceSource : priceSource;
+
+  const mcapEth = price * S.supply;
+  $('mcap').textContent    = money(mcapEth);
+  $('mcapSub').textContent = S.usd > 0 ? compact(mcapEth) + ' ETH' : 'fully diluted';
+
+  const raisedEth = Number(ethers.formatEther(collected));
+  $('raised').textContent    = fmtEth(collected, 4) + ' ETH';
+  $('raisedSub').textContent = S.usd > 0 ? money(raisedEth) : '';
+
+  const pct = Math.min(100, (raisedEth / TARGET_ETH) * 100);
+  $('bar').style.width = pct.toFixed(1) + '%';
+
+  const sold = Number(ethers.formatEther(curveSupply)) -
+               (Number(ethers.formatEther(tRes)) - (VIRTUAL_Q * Number(ethers.formatEther(curveSupply))) / TARGET_ETH);
+
+  $('progLeft').textContent  =
+    `${compact(Math.max(0, sold))} of ${compact(ethers.formatEther(curveSupply))} sold · ${pct.toFixed(1)}%`;
+  $('progRight').textContent =
+    `Graduates at ${TARGET_ETH} ETH raised` + (S.usd > 0 ? ` (≈ ${money(TARGET_ETH)})` : '');
+
+  $('progNote').textContent = graduated
+    ? 'This token completed its curve. Liquidity was moved to Uniswap and the LP burned, so trading now happens on the pool.'
+    : `Every buy moves the price up the curve. At ${TARGET_ETH} ETH raised it migrates to Uniswap automatically and the liquidity is burned.`;
+
+  return { qRes, tRes, curveSupply };
+}
+
+/* ---------- fee engine ---------- *
+ * After graduation the token's trading tax lands in a FeeSplitter, which
+ * holds it until somebody calls the function that moves it. Every one of
+ * those functions is permissionless by design -- no owner, no keeper, no
+ * privileged address -- which is good for trust and useless in practice if
+ * no page ever calls them. This panel is that caller.
+ *
+ * Each call converts at most MAX_SWAP_BPS_OF_POOL (1%) of the pool per go.
+ * That cap, not the caller's minEthOut, is what bounds a sandwich: the call
+ * is permissionless, so an attacker sandwiching it would simply call it
+ * themselves and pass zero. The UI therefore passes zero and says so,
+ * rather than implying a slippage guard it does not have.                   */
+
+const SPLITTER_ABI = [
+  'function dividendPool() view returns (uint256)',
+  'function liquidityPool() view returns (uint256)',
+  'function marketingPool() view returns (uint256)',
+  'function pendingBurn() view returns (uint256)',
+  'function allocated() view returns (uint256)',
+  'function threshold() view returns (uint256)',
+  'function swapCap() view returns (uint256)',
+  'function burnDue() view returns (bool)',
+  'function dividendVault() view returns (address)',
+  'function dividendMode() view returns (uint8)',
+  'function process()',
+  'function payDividends(uint256)',
+  'function payMarketing(uint256)',
+  'function addLiquidity(uint256)',
+  'function executeBurn()',
+];
+
+const VAULT_ABI = [
+  'function pending(address) view returns (uint256)',
+  'function claim()',
+];
+
+function tokenAmount(v) {
+  return compact(ethers.formatEther(v)) + ' ' + S.symbol;
+}
+
+/// One row: what is sitting there, and the call that moves it.
+function engineRow(r) {
+  const ready = r.amount > 0n && r.enabled;
+  return `
+    <div class="erow">
+      <div class="einfo">
+        <div class="ename">${r.label}</div>
+        <div class="eamt">${r.amount > 0n ? esc(r.display) : '—'}</div>
+        ${r.note ? `<div class="enote">${r.note}</div>` : ''}
+      </div>
+      <button class="ebtn" data-fn="${r.fn}" ${ready ? '' : 'disabled'}>${esc(r.cta)}</button>
+    </div>`;
+}
+
+async function loadFeeEngine() {
+  if (!S.graduated || !S.curveAddr) return;
+
+  const curve = new ethers.Contract(S.curveAddr, CURVE_ABI, provider);
+  let splitterAddr;
+  try {
+    splitterAddr = await curve.splitter();
+  } catch { return; }
+  if (!splitterAddr || splitterAddr === ethers.ZeroAddress) return;   // untaxed token
+
+  S.splitter = splitterAddr;
+
+  const sp = new ethers.Contract(splitterAddr, SPLITTER_ABI, provider);
+  const token = new ethers.Contract(S.tokenAddr, TOKEN_ABI, provider);
+
+  const [divPool, liqPool, mktPool, burnPend, alloc, threshold, cap, burnDue, vault, bal] =
+    await Promise.all([
+      sp.dividendPool(), sp.liquidityPool(), sp.marketingPool(), sp.pendingBurn(),
+      sp.allocated(), sp.threshold(), sp.swapCap().catch(() => 0n), sp.burnDue().catch(() => true),
+      sp.dividendVault().catch(() => ethers.ZeroAddress),
+      token.balanceOf(splitterAddr),
+    ]);
+
+  S.vault = vault;
+  const unsplit = bal > alloc ? bal - alloc : 0n;
+  const paysEth = S.dividendMode === 1;
+
+  // Anything larger than the cap converts across several calls.
+  const slices = (pool) =>
+    cap > 0n && pool > cap
+      ? `converts ${esc(tokenAmount(cap))} per call &mdash; run it again for the rest`
+      : '';
+
+  const rows = [
+    engineRow({
+      label: 'Unsplit tax', fn: 'process',
+      amount: unsplit, display: tokenAmount(unsplit),
+      note: unsplit > 0n && unsplit < threshold
+        ? `below the ${esc(tokenAmount(threshold))} threshold &mdash; not worth the gas yet`
+        : 'split four ways: liquidity, burn, marketing, dividends',
+      cta: 'Split', enabled: unsplit >= threshold,
+    }),
+    engineRow({
+      label: paysEth ? 'Dividends, paid in ETH' : 'Dividends, paid in ' + esc(S.symbol),
+      fn: 'payDividends',
+      amount: divPool, display: tokenAmount(divPool),
+      note: vault === ethers.ZeroAddress
+        ? 'no vault on this token'
+        : (paysEth ? slices(divPool) || 'swapped to ETH, then claimable by holders'
+                   : 'moved to the vault, then claimable by holders'),
+      cta: 'Pay out', enabled: vault !== ethers.ZeroAddress,
+    }),
+    engineRow({
+      label: 'Marketing', fn: 'payMarketing',
+      amount: mktPool, display: tokenAmount(mktPool),
+      note: slices(mktPool) || 'swapped to ETH and sent to the marketing wallet',
+      cta: 'Swap & send', enabled: cap > 0n,
+    }),
+    engineRow({
+      label: 'Liquidity', fn: 'addLiquidity',
+      amount: liqPool, display: tokenAmount(liqPool),
+      note: slices(liqPool) || 'half swapped to ETH, paired back in, LP burned',
+      cta: 'Add liquidity', enabled: cap > 0n && liqPool > 1n,
+    }),
+    engineRow({
+      label: 'Held for burn', fn: 'executeBurn',
+      amount: burnPend, display: tokenAmount(burnPend),
+      note: burnDue ? 'sent to the burn address' : 'the burn window has not opened yet',
+      cta: 'Burn', enabled: burnDue,
+    }),
+  ];
+
+  $('engineRows').innerHTML = rows.join('');
+  $('engineIntro').innerHTML =
+    'Trading tax collects here after graduation. Every action below is permissionless &mdash; '
+    + 'anyone may trigger it, and the proceeds always go where the token’s rules send them, '
+    + 'never to whoever pressed the button.';
+  $('engineNote').innerHTML =
+    'Swaps are capped at 1% of the pool per call. That cap is what limits sandwiching here, '
+    + 'so these calls pass no minimum-output figure &mdash; on a permissionless function an attacker '
+    + 'would just call it themselves and pass zero.';
+  $('enginePanel').style.display = '';
+
+  $('engineRows').querySelectorAll('.ebtn').forEach((b) => {
+    b.addEventListener('click', () => runEngine(b, b.dataset.fn));
+  });
+
+  await loadClaim();
+}
+
+async function runEngine(btn, fn) {
+  if (!S.signer) { await connect(); if (!S.signer) return; }
+
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Confirm…';
+
+  try {
+    const sp = new ethers.Contract(S.splitter, SPLITTER_ABI, S.signer);
+    // payDividends, payMarketing and addLiquidity take minEthOut; the others
+    // take nothing. See the note above on why this is zero.
+    const args = (fn === 'process' || fn === 'executeBurn') ? [] : [0n];
+
+    await sp[fn].staticCall(...args, { from: S.account });
+    const tx = await sp[fn](...args);
+    btn.textContent = 'Working…';
+    await tx.wait();
+
+    toast('Done');
+    await loadFeeEngine();
+  } catch (err) {
+    console.error(err);
+    const msg = err?.shortMessage || err?.reason || err?.message || '';
+    toast(/user rejected|denied/i.test(msg) ? 'Cancelled in wallet' : (msg.slice(0, 140) || 'Call failed'), true);
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+/// What this wallet can claim right now, in whichever asset the token pays.
+async function loadClaim() {
+  const panel = $('claimPanel');
+  if (!S.vault || S.vault === ethers.ZeroAddress) { panel.style.display = 'none'; return; }
+
+  const paysEth = S.dividendMode === 1;
+  panel.style.display = '';
+
+  if (!S.account) {
+    $('claimBody').innerHTML =
+      `<div class="quoteline">Connect a wallet to see what you can claim. Dividends on this token are paid in `
+      + `<b>${paysEth ? 'ETH' : esc(S.symbol)}</b>.</div>`;
+    return;
+  }
+
+  let amt = 0n;
+  try {
+    amt = await new ethers.Contract(S.vault, VAULT_ABI, provider).pending(S.account);
+  } catch { /* vault may not know this wallet yet */ }
+
+  if (amt === 0n) {
+    $('claimBody').innerHTML =
+      `<div class="quoteline">Nothing to claim yet. Dividends on this token are paid in `
+      + `<b>${paysEth ? 'ETH' : esc(S.symbol)}</b>, and accrue while you hold.</div>`;
+    return;
+  }
+
+  const text = paysEth
+    ? Number(ethers.formatEther(amt)).toFixed(6) + ' ETH'
+    : compact(ethers.formatEther(amt)) + ' ' + S.symbol;
+
+  $('claimBody').innerHTML =
+    `<div class="quoteline">You can claim <b>${esc(text)}</b>.</div>
+     <button class="go" id="claimBtn">Claim ${esc(text)}</button>`;
+
+  $('claimBtn').addEventListener('click', async () => {
+    const b = $('claimBtn');
+    b.disabled = true;
+    const label = b.textContent;
+    b.textContent = 'Confirm…';
+    try {
+      const v = new ethers.Contract(S.vault, VAULT_ABI, S.signer);
+      const tx = await v.claim();
+      b.textContent = 'Claiming…';
+      await tx.wait();
+      toast('Claimed');
+      await loadClaim();
+    } catch (err) {
+      console.error(err);
+      toast(err?.shortMessage || 'Claim failed', true);
+      b.disabled = false;
+      b.textContent = label;
+    }
+  });
+}
+
+/* ---------- boot ---------- */
+
+async function main() {
+  const tokenAddr = tokenAddressFromUrl();
+  if (!tokenAddr) {
+    $('name').textContent = 'No token specified';
+    $('sub').textContent = 'add ?a=0x… to the URL';
+    return;
+  }
+  S.tokenAddr = tokenAddr;
+
+  S.usd = await ethUsd();
+
+  const factory = new ethers.Contract(FACTORY, FACTORY_ABI, provider);
+  const token   = new ethers.Contract(tokenAddr, TOKEN_ABI, provider);
+
+  // Name and ticker first: they make the page useful even if the rest is slow.
+  let buyTaxBps = 0, sellTaxBps = 0;
+  try {
+    const [name, sym, supply, bt, st, pair] = await Promise.all([
+      token.name(), token.symbol(), token.totalSupply(),
+      token.buyTaxBps().catch(() => 0n),
+      token.sellTaxBps().catch(() => 0n),
+      token.dexPair().catch(() => ethers.ZeroAddress),
+    ]);
+    S.name = name; S.symbol = sym; S.pair = pair;
+    S.supply = Number(ethers.formatEther(supply));
+    buyTaxBps = Number(bt); sellTaxBps = Number(st);
+
+    $('name').textContent = name;
+    document.title = `${name} ($${sym}) — NO SLEEP`;
+  } catch {
+    $('name').textContent = 'Not a token on this chain';
+    $('sub').textContent = 'could not read the contract';
+    return;
+  }
+
+  wireCopy($('caToken'), tokenAddr);
+
+  const launch = await findLaunch(factory, tokenAddr);
+  if (!launch) {
+    $('sub').innerHTML = `<b>$${esc(S.symbol)}</b>`;
+    $('tradeNote').textContent = 'No curve found for this token, so there is no trade history to show.';
+    $('trades').innerHTML = '<tr><td colspan="5" class="empty">—</td></tr>';
+    $('tradeBox').innerHTML = '<div class="quoteline">This token was not launched on No Sleep.</div>';
+    return;
+  }
+
+  S.curveAddr = launch.curve;
+  wireCopy($('caCurve'), launch.curve);
+  wireCopy($('caCreator'), launch.creator);
+  $('created').textContent = new Date(Number(launch.createdAt) * 1000).toLocaleString();
+  $('sub').innerHTML =
+    `<b>$${esc(S.symbol)}</b> &middot; created by <a href="${EXPLORER}/address/${esc(launch.creator)}" ` +
+    `target="_blank" rel="noopener">${esc(short(launch.creator))}</a> &middot; ${esc(ageLabel(launch.createdAt))}`;
+
+  // Description and artwork live in the launch metadata.
+  try {
+    const raw = await factory.metadataURI(tokenAddr);
+    if (raw) {
+      const m = JSON.parse(raw);
+      $('desc').textContent = m.description || `${S.name}, paired with ETH.`;
+      const img = typeof m.image === 'string' ? m.image.trim() : '';
+      const src = /^https?:\/\//i.test(img) ? img
+                : /^ipfs:\/\//i.test(img) ? PINATA_GATEWAY + img.slice(7) : '';
+      if (src) $('icon').innerHTML = `<img src="${esc(src)}" alt="" onerror="this.parentNode.textContent='◆'">`;
+    } else {
+      $('desc').textContent = `${S.name}, paired with ETH.`;
+    }
+  } catch { $('desc').textContent = `${S.name}, paired with ETH.`; }
+
+  const { qRes, tRes } = await refreshNumbers();
+
+  // Pills describe what this token actually does, read from its own contracts.
+  const curve = new ethers.Contract(launch.curve, CURVE_ABI, provider);
+  const [liquidityBps, burnBps, marketingBps, dividendBps, referralBps, dividendMode] = await Promise.all([
+    curve.liquidityBps().catch(() => 0n),
+    curve.burnBps().catch(() => 0n),
+    curve.marketingBps().catch(() => 0n),
+    curve.dividendBps().catch(() => 0n),
+    curve.referralBps().catch(() => 0n),
+    // Curves deployed before ETH dividends existed have no such getter.
+    // Absent means the only mode there was: paid in the token itself.
+    curve.dividendMode().catch(() => 0n),
+  ]);
+  S.dividendMode = Number(dividendMode);
+
+  const pills = ['<span class="pill"><i class="d"></i>Robinhood Chain</span>',
+                 '<span class="pill">&#8646; ETH</span>'];
+  if (S.graduated)            pills.push('<span class="pill grad">Graduated</span>');
+  if (Number(burnBps) > 0)    pills.push('<span class="pill">&#128293; Buyback &amp; burn</span>');
+  if (Number(dividendBps) > 0) {
+    pills.push(`<span class="pill">&#128176; Dividends in ${S.dividendMode === 1 ? 'ETH' : esc(S.symbol)}</span>`);
+  }
+  if (buyTaxBps || sellTaxBps) pills.push(`<span class="pill">Tax ${buyTaxBps / 100}/${sellTaxBps / 100}%</span>`);
+  $('pills').innerHTML = pills.join('');
+
+  renderFees({
+    buyTaxBps, sellTaxBps,
+    liquidityBps: Number(liquidityBps), burnBps: Number(burnBps),
+    marketingBps: Number(marketingBps), dividendBps: Number(dividendBps),
+    referralBps: Number(referralBps), referralId: launch.referralId,
+    dividendMode: S.dividendMode,
+  });
+
+  if (S.graduated && S.pair && S.pair !== ethers.ZeroAddress) wireCopy($('caPair'), S.pair);
+  else $('caPair').textContent = `not yet — graduates at ${TARGET_ETH} ETH`;
+
+  renderTradePanel();
+
+  // Everything past this point is log scanning: slower, and allowed to fail
+  // without taking the page down with it.
+  loadFeeEngine().catch((err) => {
+    console.error(err);
+    $('engineNote').textContent = 'Could not read the fee splitter.';
+  });
+
+  loadHistory(launch, qRes, tRes).catch((err) => {
+    console.error(err);
+    $('chartNote').textContent = 'Could not read trade logs from the RPC.';
+    $('holdersSub').textContent = 'unavailable';
+  });
+}
+
+async function loadHistory(launch, qRes, tRes) {
+  const head  = await provider.getBlockNumber();
+  const curve = new ethers.Contract(S.curveAddr, CURVE_ABI, provider);
+
+  const start = await blockAtTime(Number(launch.createdAt) - 60, head);
+  const span  = head - start;
+
+  // A full replay is exact but costs one request per chunk. Beyond this the
+  // page stops pretending and says so rather than burning a hundred calls.
+  const FULL_LIMIT = 400000;
+  const complete = span <= FULL_LIMIT;
+  const from = complete ? start : Math.max(0, head - 120000);
+
+  const evts = [];
+  const push = (logs, kind) => {
+    for (const e of logs) {
+      evts.push({
+        kind,
+        block: e.blockNumber,
+        index: e.index ?? e.logIndex ?? 0,
+        who: kind === 'Buy' ? e.args.buyer : e.args.seller,
+        eth: kind === 'Buy' ? e.args.ethIn : e.args.ethOut,
+        tokens: kind === 'Buy' ? e.args.tokensOut : e.args.tokensIn,
+        fee: e.args.fee,
+      });
+    }
+  };
+
+  await getLogsChunked(curve, curve.filters.Bought(), from, head, (l) => push(l, 'Buy'));
+  await getLogsChunked(curve, curve.filters.Sold(),   from, head, (l) => push(l, 'Sell'));
+
+  evts.sort((a, b) => (a.block - b.block) || (a.index - b.index));
+
+  drawChart(priceSeries(qRes, tRes, evts));
+  $('chartTitle').textContent = 'Price in ETH';
+  $('chartNote').textContent = complete
+    ? 'Rebuilt from every Bought and Sold event since launch — no indexer, no backend.'
+    : 'Rebuilt from recent Bought and Sold events. This token is old enough that the full history is not scanned here.';
+
+  renderTrades([...evts].reverse(), S.symbol, complete);
+
+  if (!complete) {
+    $('holders').textContent = '—';
+    $('holdersSub').textContent = 'needs an indexer';
+    return;
+  }
+
+  try {
+    const n = await countHolders(S.tokenAddr, start, head, [S.curveAddr, S.pair]);
+    $('holders').textContent = n.toLocaleString();
+    $('holdersSub').textContent = 'wallets with a balance';
+  } catch (err) {
+    console.error(err);
+    $('holders').textContent = '—';
+    $('holdersSub').textContent = 'unavailable';
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  $('sub').textContent = 'Something went wrong — see the browser console';
+});
+</script>
+</body>
+</html>
