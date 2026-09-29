@@ -11,6 +11,10 @@ interface IDividendVault {
     function deposit(uint256 amount) external;
 }
 
+interface IEthDividendVault {
+    function depositEth() external payable;
+}
+
 /// @notice Holds post-graduation tax and splits it four ways.
 ///         Swaps are pull-based: anyone can trigger `process()` once the
 ///         balance clears the threshold. Nothing runs inside a transfer.
@@ -44,6 +48,17 @@ contract FeeSplitter is ReentrancyGuard {
 
     BurnMode public immutable burnMode;
     uint64 public lastBurnAt;
+
+    /// What holders actually receive. SelfToken pays the token itself; Eth
+    /// swaps the dividend tranche to ETH first. Fixed at construction -- a
+    /// launcher picks it once and it cannot move afterwards, same as the
+    /// split percentages.
+    enum DividendMode {
+        SelfToken,
+        Eth
+    }
+
+    DividendMode public immutable dividendMode;
 
     /// Accumulated for dividends, held until the dividend module claims it.
     /// Earmarked but not yet actioned. Excluded from future splits.
@@ -92,7 +107,8 @@ contract FeeSplitter is ReentrancyGuard {
         uint16 marketingBps_,
         uint16 dividendBps_,
         uint256 threshold_,
-        BurnMode burnMode_
+        BurnMode burnMode_,
+        DividendMode dividendMode_
     ) {
         if (marketing_ == address(0)) revert ZeroAddress();
 
@@ -109,6 +125,7 @@ contract FeeSplitter is ReentrancyGuard {
         deployer = msg.sender;
         threshold = threshold_;
         burnMode = burnMode_;
+        dividendMode = dividendMode_;
         lastBurnAt = uint64(block.timestamp);
     }
 
@@ -143,11 +160,24 @@ contract FeeSplitter is ReentrancyGuard {
     /// Swaps the marketing allocation for ETH and forwards it.
     /// Permissionless and separate from `process()` so a failing swap
     /// can never block the split.
+    ///
+    /// Capped by `swapCap()` for the same reason `addLiquidity` and
+    /// `payDividends` are: the call is permissionless and `minEthOut` comes
+    /// from the caller, so the only thing that bounds a sandwich is how much
+    /// is sold in one go. This path was uncapped while the other two were,
+    /// which left the largest single tranche as the easiest to sandwich.
+    ///
+    /// Anything above the cap stays in `marketingPool` for the next call, so
+    /// the allocation converts in slices and nothing is stranded.
     function payMarketing(uint256 minEthOut) external nonReentrant {
         uint256 amount = marketingPool;
         if (amount == 0) revert NothingAllocated();
 
-        marketingPool = 0;
+        uint256 cap = swapCap();
+        if (cap == 0) revert NothingAllocated();
+        if (amount > cap) amount = cap;
+
+        marketingPool -= amount;
 
         IERC20(address(token)).forceApprove(address(router), amount);
 
@@ -255,17 +285,54 @@ contract FeeSplitter is ReentrancyGuard {
     }
 
     /// Forwards the dividend allocation to the vault for holders to claim.
-    function payDividends() external nonReentrant {
+    /// Forwards the dividend tranche to the vault.
+    ///
+    /// In SelfToken mode the tokens go across untouched and `minEthOut` is
+    /// ignored. In Eth mode the tranche is sold first, which means this call
+    /// is sandwichable in exactly the way addLiquidity() is: it is
+    /// permissionless and `minEthOut` comes from the caller, who may be the
+    /// attacker. The same defence applies -- the trade is capped at a small
+    /// slice of the pool, so the slippage anyone can extract is bounded no
+    /// matter what they pass. Whatever exceeds the cap stays in dividendPool
+    /// for the next call, so nothing is stranded and nobody can block
+    /// progress; the tranche simply converts in slices.
+    function payDividends(uint256 minEthOut) external nonReentrant {
         if (dividendVault == address(0)) revert NoVault();
         uint256 amount = dividendPool;
         if (amount == 0) revert NothingAllocated();
 
-        dividendPool = 0;
+        if (dividendMode == DividendMode.SelfToken) {
+            dividendPool = 0;
+            IERC20(address(token)).forceApprove(dividendVault, amount);
+            IDividendVault(dividendVault).deposit(amount);
+            emit DividendsPaid(amount);
+            return;
+        }
 
-        IERC20(address(token)).forceApprove(dividendVault, amount);
-        IDividendVault(dividendVault).deposit(amount);
+        uint256 cap = swapCap();
+        if (cap == 0) revert NothingAllocated();
+        if (amount > cap) amount = cap;
 
-        emit DividendsPaid(amount);
+        dividendPool -= amount;
+
+        IERC20(address(token)).forceApprove(address(router), amount);
+
+        address[] memory path = new address[](2);
+        path[0] = address(token);
+        path[1] = router.WETH();
+
+        uint256 before = address(this).balance;
+
+        router.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            amount, minEthOut, path, address(this), block.timestamp
+        );
+
+        uint256 ethOut = address(this).balance - before;
+        if (ethOut == 0) revert NothingAllocated();
+
+        IEthDividendVault(dividendVault).depositEth{value: ethOut}();
+
+        emit DividendsPaid(ethOut);
     }
 
     /// Burns anything held back while waiting for the burn window.
