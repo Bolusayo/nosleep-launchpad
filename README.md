@@ -11,7 +11,10 @@ automatically to a Uniswap V2 pool with liquidity permanently burned.
 See [`SPEC.md`](./SPEC.md) for the full system specification, invariants, and
 known gaps. See [`TODO.md`](./TODO.md) for current status.
 
-> ⚠️ **Not audited. Not deployed to mainnet.** Do not use with real funds.
+> ⚠️ **Not audited.** Deployed to Robinhood Chain mainnet on 29 September 2026
+> at commit `eb00ce9`, with `deployFee` set to 1000 ETH so that nothing can be
+> launched until the owner lowers it. The contracts are immutable and live.
+> Do not use with real funds until the audit is back.
 
 ## Contracts
 

@@ -9,7 +9,7 @@ intent from implementation.
 - **Solidity:** 0.8.28 (pinned), `via_ir = true`, `optimizer_runs = 1`
 - **Dependencies:** OpenZeppelin Contracts v5 (ERC20, ERC721, AccessControl, Ownable, ReentrancyGuard, SafeERC20, Math)
 - **External integration:** Uniswap V2 (Factory + Pair; the Router is used only by `FeeSplitter`)
-- **Status:** not audited, not deployed to mainnet
+- **Status:** not audited; deployed to mainnet 29 Sep 2026 at `eb00ce9`, locked against use
 
 ---
 

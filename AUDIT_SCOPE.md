@@ -1,14 +1,21 @@
 # No Sleep — Audit Scope and Change Log
 
 **Repository:** github.com/Bolusayo/nosleep-launchpad
-**Current commit:** `df65afe`
+**Current commit:** `eb00ce9`
 **Target chain:** Robinhood Chain (Arbitrum Orbit L2), chainId 4663
-**Status:** not deployed to any public mainnet
+**Status:** deployed to mainnet 29 September 2026, locked against use
 
 Companion document: `SPEC.md` — system specification, invariants, known gaps,
 and prior verification.
 
 ---
+
+> **Deployed.** Commit `eb00ce9` is live on Robinhood Chain mainnet as of
+> 29 September 2026. `LaunchpadFactory` is at
+> `0x9509Ca715ECDE9C8801809121619a319F84C701F`. It was deployed with
+> `deployFee` set to 1000 ETH, which makes launching impossible until the
+> owner lowers it, but the contracts are on-chain and immutable. Please review
+> on that basis rather than as pre-deployment code.
 
 ## 1. What we are asking for
 
@@ -48,6 +55,8 @@ Newest first. Everything listed is in `main`.
 
 | Commit | Change | Contracts touched |
 |---|---|---|
+| `eb00ce9` | ETH dividends — **this is the deployed commit** | `EthDividendVault` (new), `FeeSplitter`, `BondingCurve`, `CurveDeployer`, `SplitterDeployer`, `LaunchpadFactory` |
+| `def72dc` | `payMarketing` swap cap | `FeeSplitter` |
 | `df65afe` | Two-step ownership; static admin page | `LaunchpadFactory` |
 | `437c243` | `referralCommissionBps` made `constant` | `LaunchpadFactory` |
 | `cf5f00f` | Bounded the sandwich surface on `addLiquidity` | `FeeSplitter` |
@@ -268,10 +277,10 @@ rediscovering them:
 
 ## 7. Testing
 
-- 103 unit tests, 9 suites, 6 fuzz invariants, plus the ETH-dividend work:
-  `test/EthDividendVault.t.sol` (17) and `test/FeeSplitterMarketingCap.t.sol` (7)
-- 14 fork tests against the real Uniswap V2 deployment on a mainnet fork:
-  `test/ForkGraduation.t.sol` and `test/ForkFrontrunGraduation.t.sol`, plus
+- 127 unit tests, 12 suites, 6 fuzz invariants. Of those, 17 are
+  `test/EthDividendVault.t.sol` and 7 `test/FeeSplitterMarketingCap.t.sol`
+- 21 fork tests against the real Uniswap V2 deployment on a mainnet fork:
+  `test/ForkGraduation.t.sol`, `test/ForkFrontrunGraduation.t.sol`, and
   `test/ForkEthDividends.t.sol` (7), which swaps a real dividend tranche
   through the live router and checks the vault ends solvent
 - CI enforces `forge fmt --check`, `forge build --sizes` (fails on EIP-170
@@ -300,7 +309,7 @@ them, and `CurveDeployer` does not fit under EIP-170.
 ```bash
 git clone --recursive https://github.com/Bolusayo/nosleep-launchpad
 cd nosleep-launchpad
-git checkout <the ETH-dividend commit — fill in before sending>
+git checkout eb00ce9
 forge build
 forge test --no-match-path 'test/Fork*.t.sol'
 ```
